@@ -191,8 +191,9 @@ Copy `.env.example` to `.env`. Key variables:
 | `DATABASE_URL` | `postgresql+asyncpg://...` | Async Postgres connection |
 | `REDIS_URL` | `redis://localhost:6379/0` | Celery broker + result backend |
 | `CELERY_BROKER_URL` | same as `REDIS_URL` | Explicit broker override |
-| `SECRET_KEY` | (required) | FastAPI security |
-| `DEBUG` | `false` | Enable debug mode |
+| `SECRET_KEY` | (required, min 32 chars) | Reserved for JWT auth (validated at startup) |
+| `DEBUG` | `false` | Enable debug mode; also controls CORS and log format |
+| `CORS_ORIGINS` | `["*"]` when DEBUG=true, required otherwise | Allowed CORS origins (comma-separated) |
 | `SCRAPE_INTERVAL_MINUTES` | `30` | Default Celery Beat interval |
 | `LOG_LEVEL` | `INFO` | structlog level |
 | `VITE_API_URL` | `http://localhost:8000` | Frontend API base URL (Vite build-time var) |

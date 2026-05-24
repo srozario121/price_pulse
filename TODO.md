@@ -56,23 +56,65 @@ Set up the full monorepo skeleton — directory structure, Make commands, Docker
 
 Bootstrap the FastAPI application with layered architecture, database connectivity, configuration management, and Alembic migrations.
 
+### Design decisions (resolved)
+
+- **Database driver**: `asyncpg` only — no `psycopg2-binary`. The SQLAlchemy async engine uses `postgresql+asyncpg://` and Alembic `env.py` uses the `run_sync` pattern (wraps a synchronous `connection.run_sync(do_run_migrations)` inside an async context) so migrations also execute over asyncpg. Rationale: single driver install; avoids maintaining two Postgres libraries.
+- **Health-check depth**: `GET /health` executes `SELECT 1` against the DB. Returns `{"status": "ok"}` with HTTP 200 on success; returns `{"status": "error", "detail": "db unavailable"}` with HTTP 503 on failure. Rationale: Docker `depends_on` health-checks and load balancers need a real readiness signal, not just process presence.
+- **Settings class scope**: All application env vars are defined in a single `Settings` class in `config.py` — `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`, `SECRET_KEY`, `DEBUG`, `LOG_LEVEL`, `SCRAPE_INTERVAL_MINUTES`, and `CORS_ORIGINS`. Rationale: single source of truth; later items (Celery, logging) import `settings` without touching `Settings` again.
+- **CORS origins**: `CORS_ORIGINS` env var (comma-separated list). Defaults to `["*"]` when `DEBUG=true`; required (no default) when `DEBUG=false`. `CORSMiddleware` reads from `settings.CORS_ORIGINS`. Rationale: prevents accidental wildcard CORS in production deployments.
+- **Structlog format**: DEBUG-aware — `ConsoleRenderer` (pretty-print) when `settings.DEBUG=true`, structured JSON otherwise. Configured at module import time in `logging.py` (before app startup and lifespan hook). Rationale: local developer experience without sacrificing production log-aggregator compatibility.
+- **Error response format**: FastAPI default RFC 7807 shape (`{"detail": ...}`). Custom handlers for `HTTPException` and `RequestValidationError` preserve this shape; catch-all 500 handler logs the traceback via structlog and returns `{"detail": "internal server error"}`. Rationale: standard shape, well-documented, expected by frontend clients.
+- **SECRET_KEY use**: Reserved for JWT authentication (future item). In item 2, `config.py` validates presence and minimum length (32 chars) but does not consume the value. Rationale: fail-fast at startup so deployments without a secret are rejected immediately.
+- **Local test database**: SQLite in-memory (`sqlite+aiosqlite:///:memory:`) for unit and integration tests. CI overrides `DATABASE_URL` with the Postgres service container. `aiosqlite` added as a dev dependency. Rationale: fast local iteration; Postgres-specific behaviour caught in CI.
+- **Test infrastructure timing**: `backend/tests/conftest.py` created in item 2. Contains `asyncio_mode = "auto"` pytest config, `async_client` fixture (`httpx.AsyncClient` over `app`), and `db_session` fixture (async session scoped per test, with `create_all`/`drop_all` teardown). All subsequent items inherit these fixtures without re-implementing them.
+- **Live E2E definition**: `@pytest.mark.live_api` test hits `http://localhost:8000/health` against a running `make dev` stack. Validates full path: FastAPI process → SQLAlchemy → Postgres container. Skipped by default (`pytest -m "not live_api"`).
+
 ### Tasks
 
-- [ ] Scaffold `backend/` with `pyproject.toml` (FastAPI, SQLAlchemy, Alembic, Pydantic v2, celery, redis, httpx, psycopg2-binary, pytest, pytest-cov, pytest-asyncio, ruff, mypy, radon)
-- [ ] Implement `backend/app/core/config.py` — Pydantic `Settings` loaded from env; expose `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`, `SECRET_KEY`, `DEBUG`
-- [ ] Implement `backend/app/core/database.py` — async SQLAlchemy engine + `get_db` dependency
-- [ ] Implement `backend/app/main.py` — FastAPI app factory, CORS, lifespan hook, health-check route (`GET /health`)
-- [ ] Create `backend/alembic/` with `env.py` wired to `DATABASE_URL` and auto-import of all models
-- [ ] Create initial migration: empty schema baseline
-- [ ] Add `backend/app/core/logging.py` — structured JSON logging via `structlog`
-- [ ] Add `backend/app/core/exceptions.py` — typed HTTP exception handlers
+- [x] Scaffold `backend/` directory tree: `backend/app/`, `backend/app/core/`, `backend/app/api/`, `backend/app/api/v1/`, `backend/app/models/`, `backend/app/schemas/`, `backend/app/services/`, `backend/app/scrapers/`, `backend/app/workers/`, `backend/app/tasks/`; add `__init__.py` to every package
+- [x] Create `backend/pyproject.toml` with `[project]` metadata, uv workspace member declaration, and dependency groups:
+  - **runtime**: `fastapi`, `uvicorn[standard]`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`, `pydantic[email]`, `pydantic-settings`, `celery[redis]`, `redis`, `httpx`, `structlog`
+  - **dev**: `aiosqlite`, `pytest`, `pytest-cov`, `pytest-asyncio`, `httpx`, `ruff`, `mypy`, `radon`
+  - **`[tool.pytest.ini_options]`**: `asyncio_mode = "auto"`; `addopts = "--strict-markers -m 'not live_api'"`; `markers = ["live_api: marks tests that hit real external services (skipped by default)"]`
+- [x] Implement `backend/app/core/config.py` — `class Settings(BaseSettings)` covering all app env vars: `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`, `SECRET_KEY` (field validator: min 32 chars), `DEBUG: bool = False`, `LOG_LEVEL: str = "INFO"`, `SCRAPE_INTERVAL_MINUTES: int = 30`, `CORS_ORIGINS: list[str]` (validator: defaults to `["*"]` when `DEBUG=true`, raises `ValueError` if empty when `DEBUG=false`); export singleton `settings = Settings()`
+- [x] Implement `backend/app/core/logging.py` — call `structlog.configure(...)` at module import time; use `ConsoleRenderer` when `settings.DEBUG=true`, `JSONRenderer` otherwise; add `add_log_level` and `TimeStamper` processors; bind `request_id` as a no-op processor stub for future middleware use
+- [x] Implement `backend/app/core/database.py` — `create_async_engine(settings.DATABASE_URL)`; `AsyncSessionLocal = async_sessionmaker(...)`; `get_db` async generator yielding `AsyncSession`; expose `Base = declarative_base()` imported by all models
+- [x] Implement `backend/app/main.py` — import `backend.app.core.logging` first (triggers structlog config); FastAPI app factory; `CORSMiddleware` with `settings.CORS_ORIGINS`; async lifespan hook (test DB connectivity on startup — log warning and raise if unreachable); register exception handlers from `exceptions.py`; `GET /health` route (runs `SELECT 1`, returns 200 or 503)
+- [x] Create `backend/alembic/` via `alembic init`; rewrite `env.py` to: import `settings.DATABASE_URL`, use `run_async_engine` + `run_sync` pattern for async migrations, auto-import `Base.metadata` (which imports all `backend/app/models/` modules so Alembic sees every table)
+- [x] Create initial Alembic migration: empty schema baseline (`alembic revision --autogenerate -m "init"`)
+- [x] Implement `backend/app/core/exceptions.py` — register handlers on `app` for: `HTTPException` (log at WARNING, return `{"detail": exc.detail}` with `exc.status_code`), `RequestValidationError` (return 422 with FastAPI's default `{"detail": errors}` body), unhandled `Exception` (log full traceback at ERROR, return 500 `{"detail": "internal server error"}`)
+- [x] Create `backend/tests/conftest.py` — define: `app` fixture overriding `DATABASE_URL` to `sqlite+aiosqlite:///:memory:`; `async_client` fixture returning `httpx.AsyncClient(app=app, base_url="http://test")` as async context manager; `db_session` fixture running `create_all` on setup and `drop_all` on teardown
+- [x] Create `backend/tests/unit/` and `backend/tests/integration/` directories with `__init__.py` stubs
 
 ### Test strategy
 
-- **Unit**: config loading, exception handler output, structured log format
-- **Integration**: `GET /health` returns 200; DB connection established on startup
-- **Negative**: missing env vars raise `ValidationError` at startup
-- **Live E2E**: not required (no external I/O in foundation)
+- **Unit** (no DB required — Arrange-Act-Assert pattern):
+  - `config.py`: `Settings` loads values from patched environment; `SECRET_KEY` under 32 chars raises `ValidationError`; `CORS_ORIGINS` defaults to `["*"]` when `DEBUG=true`; empty `CORS_ORIGINS` with `DEBUG=false` raises `ValueError`
+  - `logging.py`: `ConsoleRenderer` selected when `DEBUG=true`; `JSONRenderer` selected when `DEBUG=false`
+  - `exceptions.py`: `HTTPException` handler returns correct status code and `{"detail": ...}` body; `RequestValidationError` handler returns 422; catch-all 500 handler returns `{"detail": "internal server error"}`
+
+- **Integration** (uses `async_client` + SQLite in-memory):
+  - `GET /health` returns 200 `{"status": "ok"}` when DB is reachable
+  - `GET /health` returns 503 `{"status": "error", "detail": "db unavailable"}` when DB engine is patched to raise on connect
+  - Lifespan hook creates and releases DB connection without error on clean startup
+  - `get_db` dependency yields a working `AsyncSession` that can execute a simple query
+
+- **Negative**:
+  - Missing `SECRET_KEY` → `ValidationError` raised at `Settings()` instantiation (before app starts)
+  - Invalid `DATABASE_URL` dialect → error logged and app exits non-zero at lifespan startup
+  - `GET /health` with DB deliberately broken → 503 (not unhandled 500)
+  - `POST /nonexistent` → FastAPI 404 `{"detail": "Not Found"}` (default shape preserved)
+
+- **Live E2E** (`@pytest.mark.live_api` — requires `make dev` running):
+  - `GET http://localhost:8000/health` → 200 `{"status": "ok"}` — validates full path: FastAPI → SQLAlchemy → Postgres container
+  - Skipped by default: `pytest -m "not live_api"`
+
+### Documentation
+
+- **`CLAUDE.md`** — update: env variable table to add `CORS_ORIGINS` row; architecture section for `backend/app/core/` to note structlog import-time init and DEBUG-aware format
+- **`CHANGELOG.md`** — add `### Added` entry under `## [Unreleased]` when item is implemented: backend foundation (FastAPI, async SQLAlchemy, Alembic, structlog)
+- **`backend/pyproject.toml`** — created (new file)
+- **`backend/alembic/README`** — auto-generated by `alembic init`; no manual edits required
 
 ---
 
