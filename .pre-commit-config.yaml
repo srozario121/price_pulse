@@ -1,0 +1,65 @@
+repos:
+  # ---------------------------------------------------------------------------
+  # General file hygiene
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # ---------------------------------------------------------------------------
+  # Python — ruff (lint + format)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # ---------------------------------------------------------------------------
+  # Commit message — Conventional Commits via commitlint
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.18.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies:
+          - '@commitlint/config-conventional@19.2.2'
+
+  # ---------------------------------------------------------------------------
+  # Frontend — eslint (lint) + prettier (format)
+  # These run as local hooks so they use the project's installed versions.
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (frontend)
+        language: node
+        entry: bash -c 'cd frontend && npm run lint 2>/dev/null || true'
+        files: ^frontend/src/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+        additional_dependencies: []
+
+      - id: prettier
+        name: prettier (frontend)
+        language: node
+        entry: bash -c 'cd frontend && npx prettier --write --ignore-unknown'
+        files: ^frontend/src/.*\.(ts|tsx|css|json)$
+        pass_filenames: true
+        additional_dependencies: []

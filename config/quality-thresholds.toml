@@ -1,0 +1,29 @@
+# =============================================================================
+# Price Pulse — Quality Thresholds
+# Used by `make quality` and the quality agent to gate PRs.
+# =============================================================================
+
+[backend]
+
+# Cyclomatic complexity (radon CC)
+# P95 of all function scores must be below this threshold.
+cc_p95_max = 7
+
+# Maintainability Index (radon MI)
+# P5 of all module scores must be above this threshold (higher is better).
+mi_p5_min = 10
+
+# Halstead effort (radon HAL)
+# P95 of all function effort scores must be below this threshold.
+halstead_effort_p95_max = 500
+
+# Test coverage (pytest-cov)
+coverage_min_pct = 90
+
+[frontend]
+
+# Test coverage (vitest --coverage)
+coverage_min_pct = 80
+
+# ESLint max warnings (0 = all warnings are errors)
+eslint_max_warnings = 0

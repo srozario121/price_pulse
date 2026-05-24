@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ===========================================================================
+  # Job 1 — Lint
+  # Runs: commitlint (commit messages), ruff (Python), eslint (TypeScript)
+  # ===========================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for commitlint to inspect commit history
+
+      # -----------------------------------------------------------------------
+      # commitlint — validate commit message format
+      # -----------------------------------------------------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root Node deps (commitlint)
+        run: npm ci
+
+      - name: Run commitlint on PR commits
+        if: github.event_name == 'pull_request'
+        run: |
+          npx commitlint \
+            --from ${{ github.event.pull_request.base.sha }} \
+            --to ${{ github.event.pull_request.head.sha }} \
+            --verbose
+
+      # -----------------------------------------------------------------------
+      # ruff — Python lint
+      # -----------------------------------------------------------------------
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: Install backend deps
+        run: uv sync --group dev
+        working-directory: backend
+
+      - name: Run ruff check (backend)
+        run: uv run ruff check .
+        working-directory: backend
+
+      - name: Run ruff format check (backend)
+        run: uv run ruff format --check .
+        working-directory: backend
+
+      # -----------------------------------------------------------------------
+      # eslint — TypeScript lint
+      # -----------------------------------------------------------------------
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run eslint (frontend)
+        run: npm run lint
+        working-directory: frontend
+
+  # ===========================================================================
+  # Job 2 — Backend tests
+  # Runs pytest with a real Postgres service container
+  # ===========================================================================
+  test-backend:
+    name: Test — Backend
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: price_pulse
+          POSTGRES_PASSWORD: price_pulse
+          POSTGRES_DB: price_pulse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U price_pulse -d price_pulse_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://price_pulse:price_pulse@localhost:5432/price_pulse_test
+      DATABASE_SYNC_URL: postgresql://price_pulse:price_pulse@localhost:5432/price_pulse_test
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      DEBUG: "false"
+      LOG_LEVEL: WARNING
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: Install backend deps
+        run: uv sync --group dev
+        working-directory: backend
+
+      - name: Run pytest
+        run: |
+          uv run pytest \
+            --tb=short \
+            -q \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -m "not live_api"
+        working-directory: backend
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+
+  # ===========================================================================
+  # Job 3 — Frontend tests
+  # Runs vitest with coverage
+  # ===========================================================================
+  test-frontend:
+    name: Test — Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run vitest with coverage
+        run: npm run test:coverage
+        working-directory: frontend
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+
+  # ===========================================================================
+  # Job 4 — Docker build
+  # Builds all images on every PR (no push); uses --cache-from for speed.
+  # Images are pushed to the registry only on merge to main (separate workflow).
+  # ===========================================================================
+  build:
+    name: Build — Docker images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/backend.Dockerfile
+          push: false
+          tags: price-pulse-backend:ci
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/frontend.Dockerfile
+          push: false
+          tags: price-pulse-frontend:ci
+          build-args: |
+            VITE_API_URL=http://localhost:8000
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend

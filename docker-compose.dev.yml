@@ -1,0 +1,96 @@
+name: price-pulse
+
+# =============================================================================
+# Development overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# (or: make dev)
+#
+# Changes from production:
+#   - Backend + Celery: source code volume-mounted for hot-reload
+#   - Backend runs with --reload flag
+#   - Flower (Celery monitoring) exposed on port 5555
+#   - pgAdmin exposed on port 5050
+#   - All service ports exposed to localhost for direct access
+# =============================================================================
+
+services:
+
+  backend:
+    build:
+      target: development
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    volumes:
+      - ./backend:/app:cached
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    ports:
+      - "8000:8000"
+
+  celery-worker:
+    build:
+      target: development
+    command: celery -A app.workers.celery_app worker --loglevel=debug --concurrency=2
+    volumes:
+      - ./backend:/app:cached
+    environment:
+      - LOG_LEVEL=DEBUG
+
+  celery-beat:
+    build:
+      target: development
+    command: celery -A app.workers.celery_app beat --loglevel=debug
+    volumes:
+      - ./backend:/app:cached
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  # ---------------------------------------------------------------------------
+  # Flower — Celery monitoring UI (dev only)
+  # ---------------------------------------------------------------------------
+  flower:
+    image: mher/flower:2.0
+    restart: unless-stopped
+    command: celery --broker=${CELERY_BROKER_URL:-redis://redis:6379/0} flower --port=5555
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - price-pulse-net
+
+  # ---------------------------------------------------------------------------
+  # pgAdmin — PostgreSQL UI (dev only)
+  # ---------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@pricepulse.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_DISABLE_POSTFIX: "true"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - price-pulse-net
+
+# =============================================================================
+# Additional dev-only volumes
+# =============================================================================
+volumes:
+  pgadmin-data:
+    driver: local

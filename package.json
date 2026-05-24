@@ -1,0 +1,13 @@
+{
+  "name": "price-pulse-root",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Root workspace — commitlint config and shared dev tooling",
+  "devDependencies": {
+    "@commitlint/cli": "^19.3.0",
+    "@commitlint/config-conventional": "^19.2.2"
+  },
+  "scripts": {
+    "commitlint": "commitlint"
+  }
+}
