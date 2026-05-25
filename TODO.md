@@ -122,21 +122,70 @@ Bootstrap the FastAPI application with layered architecture, database connectivi
 
 Define the core domain models: products, price history, price sources, user alerts, and notification logs.
 
+### Design decisions (resolved)
+
+- **Native Postgres ENUM types**: All enumerated fields use `native_enum=True` SQLAlchemy `Enum` columns backed by named Postgres ENUM types. Four ENUM types created in the Alembic migration: `source_type_enum` (`generic`, `amazon`, `ebay`, `currys`), `alert_direction_enum` (`above`, `below`), `notification_channel_enum` (`email`, `webhook`), `notification_status_enum` (`pending`, `sent`, `failed`). Rationale: DB-level type enforcement; Postgres ENUM is more storage-efficient than VARCHAR + CHECK.
+- **SQLite / native ENUM conflict**: Native PG ENUM types are incompatible with the SQLite in-memory test DB used in item 2. Resolution: integration tests (CRUD, FK, cascade) use a real Postgres container via `testcontainers[postgres]`; a new session-scoped `pg_engine` fixture is added to `tests/conftest.py` that integration tests opt into by requesting `pg_engine` instead of `db_engine`. Unit tests (schema round-trips, `__repr__`) keep SQLite. Rationale: clean separation — unit tests remain fast; integration tests match the production dialect.
+- **Price column precision**: `NUMERIC(12, 4)` — exact decimal representation, no floating-point drift, supports prices up to 99,999,999.9999. Rationale: monetary values require exact arithmetic.
+- **currency field**: `VARCHAR(3)`, default `'GBP'`. ISO 4217 code. Rationale: default simplifies UK-focused scrapers while remaining ISO-standard.
+- **raw_html_hash**: `VARCHAR(64)` (SHA-256 hex digest, 64 chars). Indexed (non-unique) on `PriceRecord(raw_html_hash)` for deduplication lookups in `price_service`. Deduplication query: `WHERE product_id = ? AND raw_html_hash = ?`. No unique constraint — different products may have identical HTML. Rationale: SHA-256 collision resistance is adequate; per-product deduplication is the correct scope.
+- **Cascade delete policy**: Full `cascade="all, delete-orphan"` on all FK relationships. `Product` deleted → `PriceRecord` + `PriceAlert` deleted → `NotificationLog` deleted. Rationale: no orphaned history for a removed product; consistent housekeeping.
+- **Product.url uniqueness**: Unique constraint on `Product.url`. Duplicate URL insert returns 409 Conflict at the API layer. Rationale: prevents tracking the same product twice.
+- **updated_at auto-update**: ORM-level `server_default=func.now()`, `onupdate=func.now()` on the `Column` definition. Fires on every ORM-mediated UPDATE. Rationale: no DB trigger needed; consistent with async ORM usage pattern.
+- **notified_at vs sent_at**: Both retained with distinct purposes. `PriceAlert.notified_at` is a denormalized quick-check flag (when was this alert last notified — avoids a JOIN on every alert read). `NotificationLog.sent_at` records per-delivery timestamps for audit and retry. Rationale: different query patterns; redundancy is intentional and documented.
+- **Schema file organisation**: One file per domain with `Base`, `Create`, `Read`, `Update` variants. Files: `schemas/product.py` (`ProductBase`, `ProductCreate`, `ProductRead`, `ProductUpdate`), `schemas/price.py` (`PriceRecordCreate`, `PriceRecordRead`), `schemas/alert.py` (`AlertBase`, `AlertCreate`, `AlertRead`, `AlertUpdate`), `schemas/notification.py` (`NotificationLogRead`). Models and schemas remain strictly separated. Rationale: FastAPI convention; independent evolution of API contracts.
+- **Database indexes**: Four explicit composite/single-column indexes added in the migration: `ix_price_record_product_captured` on `(product_id, captured_at DESC)` for paginated price history; `ix_price_record_html_hash` on `(raw_html_hash)` for deduplication; `ix_price_alert_product_active` on `(product_id, is_active)` for alert evaluation; `ix_notification_log_alert_sent` on `(alert_id, sent_at DESC)` for notification history. Rationale: hot query paths identified from the scraping and alert evaluation data flows.
+- **Alembic migration design**: One combined revision creates all four tables, all four named PG ENUM types, all FK relationships, and all four indexes atomically. Rationale: entire schema created or rolled back as one unit; simpler revision history.
+- **testcontainers dependency**: `testcontainers[postgres]` added to `backend/pyproject.toml` dev dependencies in this item so the `pg_engine` fixture is immediately usable.
+
 ### Tasks
 
-- [ ] `backend/app/models/product.py` — `Product` (id, name, url, source_type, created_at, updated_at, is_active)
-- [ ] `backend/app/models/price_history.py` — `PriceRecord` (id, product_id FK, price, currency, captured_at, raw_html_hash)
-- [ ] `backend/app/models/alert.py` — `PriceAlert` (id, product_id FK, threshold_price, direction [above/below], is_active, notified_at)
-- [ ] `backend/app/models/notification_log.py` — `NotificationLog` (id, alert_id FK, channel, payload, sent_at, status)
-- [ ] `backend/app/schemas/` — Pydantic v2 response/request schemas mirroring each model; keep models and schemas strictly separated
-- [ ] Generate and apply Alembic migration for full schema
+- [x] Add `testcontainers[postgres]>=0.7` to `[dependency-groups] dev` in `backend/pyproject.toml`
+- [x] Add session-scoped `pg_engine` Postgres testcontainer fixture to `backend/tests/conftest.py`: starts a `PostgresContainer`, yields a `create_async_engine` pointing at the container, runs `Base.metadata.create_all` / `drop_all` for setup and teardown; integration tests opt in by requesting `pg_engine` instead of `db_engine`
+- [x] `backend/app/models/product.py` — `Product`: `id` (BigInteger PK autoincrement), `name` (String, not null), `url` (String, unique, not null), `source_type` (PG ENUM `source_type_enum`: `generic`/`amazon`/`ebay`/`currys`, not null), `css_selector` (String, nullable — used by generic scraper in item 4), `created_at` (DateTime, `server_default=func.now()`), `updated_at` (DateTime, `server_default=func.now()`, `onupdate=func.now()`), `is_active` (Boolean, default `True`); relationships to `PriceRecord` and `PriceAlert` with `cascade="all, delete-orphan"`
+- [x] `backend/app/models/price_history.py` — `PriceRecord`: `id` (BigInteger PK autoincrement), `product_id` (BigInteger FK → `product.id`, not null), `price` (NUMERIC(12,4), not null), `currency` (VARCHAR(3), default `'GBP'`, not null), `captured_at` (DateTime, `server_default=func.now()`), `raw_html_hash` (VARCHAR(64), nullable); back-reference relationship to `Product`
+- [x] `backend/app/models/alert.py` — `PriceAlert`: `id` (BigInteger PK autoincrement), `product_id` (BigInteger FK → `product.id`, not null), `threshold_price` (NUMERIC(12,4), not null), `direction` (PG ENUM `alert_direction_enum`: `above`/`below`, not null), `is_active` (Boolean, default `True`), `notified_at` (DateTime, nullable — denormalized last-notified timestamp); back-reference to `Product`; relationship to `NotificationLog` with `cascade="all, delete-orphan"`
+- [x] `backend/app/models/notification_log.py` — `NotificationLog`: `id` (BigInteger PK autoincrement), `alert_id` (BigInteger FK → `price_alert.id`, not null), `channel` (PG ENUM `notification_channel_enum`: `email`/`webhook`, not null), `payload` (JSON, nullable), `sent_at` (DateTime, `server_default=func.now()`), `status` (PG ENUM `notification_status_enum`: `pending`/`sent`/`failed`, not null, default `pending`); back-reference to `PriceAlert`
+- [x] `backend/app/schemas/product.py` — `ProductBase` (name, url, source_type, css_selector, is_active), `ProductCreate(ProductBase)`, `ProductRead(ProductBase)` (adds id, created_at, updated_at; `model_config = ConfigDict(from_attributes=True)`), `ProductUpdate` (all fields Optional)
+- [x] `backend/app/schemas/price.py` — `PriceRecordCreate` (product_id, price, currency, raw_html_hash), `PriceRecordRead` (adds id, captured_at; `from_attributes=True`)
+- [x] `backend/app/schemas/alert.py` — `AlertBase` (product_id, threshold_price, direction, is_active), `AlertCreate(AlertBase)`, `AlertRead(AlertBase)` (adds id, notified_at; `from_attributes=True`), `AlertUpdate` (all fields Optional)
+- [x] `backend/app/schemas/notification.py` — `NotificationLogRead` (id, alert_id, channel, payload, sent_at, status; `from_attributes=True`)
+- [x] Uncomment model imports in `backend/alembic/env.py` at the `# ── Models` stub (line ~25): `from app.models import product, price_history, alert, notification_log`
+- [x] Generate combined Alembic migration: `alembic revision --autogenerate -m "add_core_domain_models"`; verify the generated file creates: four PG ENUM types, four tables with correct column types and FK constraints, and four named indexes (`ix_price_record_product_captured`, `ix_price_record_html_hash`, `ix_price_alert_product_active`, `ix_notification_log_alert_sent`)
+- [ ] Apply migration: `alembic upgrade head` and verify it runs cleanly against a running Postgres instance
 
 ### Test strategy
 
-- **Unit**: schema serialisation round-trips; model `__repr__` helpers
-- **Integration**: create/read/delete each model via SQLAlchemy session (uses test DB)
-- **Negative**: FK constraint violations raise `IntegrityError`; invalid enum values rejected by schema
-- **Live E2E**: not required
+- **Unit** (SQLite in-memory via `db_session` — Arrange-Act-Assert):
+  - Schema round-trips: `ProductCreate` → `ProductRead` serialisation preserves all fields; `AlertCreate` with direction `'sideways'` rejected by Pydantic validator; `PriceRecordCreate` with `price=None` raises `ValidationError`
+  - `PriceRecordRead.currency` defaults to `'GBP'` when not provided
+  - `ProductUpdate` with partial fields leaves unset fields as `None` (all-Optional schema)
+  - Model `__repr__`: `Product.__repr__` includes id and name; `PriceRecord.__repr__` includes product_id and price
+
+- **Integration** (Postgres via `pg_engine` testcontainer — Arrange-Act-Assert):
+  - Create/read each model: insert `Product`, `PriceRecord`, `PriceAlert`, `NotificationLog`; re-fetch via session; assert all fields persisted correctly including ENUM values
+  - FK navigation: fetch `product.price_records` relationship; assert list contains the inserted record
+  - Cascade delete: delete `Product` → assert `PriceRecord` and `PriceAlert` rows removed; assert `NotificationLog` removed via alert cascade
+  - `updated_at` auto-update: update `Product.name`; flush session; assert `updated_at` is later than `created_at`
+  - Index existence: query `pg_indexes` system table; assert all four named indexes exist on their respective tables
+
+- **Negative** (Postgres via `pg_engine` testcontainer — Arrange-Act-Assert):
+  - FK violation: insert `PriceRecord` with non-existent `product_id` → `IntegrityError`
+  - Unique violation: insert two `Product` rows with same URL → `IntegrityError`
+  - Invalid native ENUM: attempt to insert `PriceAlert` with `direction='sideways'` bypassing Pydantic → `StatementError` / DB-level ENUM rejection
+  - Not-null violation: insert `PriceRecord` with `price=None` → `IntegrityError`
+
+- **Live E2E** (`@pytest.mark.live_api` — requires `make dev` running):
+  - Verify migration applied: connect to the `make dev` Postgres; query `information_schema.tables` and assert all four tables exist; query `pg_type` catalogue and assert all four ENUM types exist
+  - Skipped by default: `pytest -m "not live_api"`
+
+### Documentation
+
+- **`backend/pyproject.toml`** — update: add `testcontainers[postgres]>=0.7` to `[dependency-groups] dev`
+- **`backend/tests/conftest.py`** — update: add session-scoped `pg_engine` Postgres testcontainer fixture alongside the existing `db_engine` SQLite fixture
+- **`backend/alembic/env.py`** — update: uncomment model imports stub at line ~25
+- **`CLAUDE.md`** — update: architecture section for `backend/app/models/` to document all four models, key fields, and enum types; test structure section to note integration tests use `pg_engine` (Postgres testcontainer) not SQLite
+- **`CHANGELOG.md`** — update at implementation time: add `### Added` entry under `## [Unreleased]`: core domain models (`Product`, `PriceRecord`, `PriceAlert`, `NotificationLog`), native Postgres ENUM types, Alembic migration with indexes
 
 ---
 

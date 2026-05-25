@@ -12,6 +12,8 @@ Fixtures:
 
 import os
 
+import pytest
+
 # ── Patch env BEFORE any app import so pydantic-settings reads test values ────
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-minimum-32-characters-long")
@@ -103,3 +105,63 @@ async def async_client(db_engine) -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=test_app)  # type: ignore[arg-type]
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
+
+
+# ── Postgres testcontainer fixtures (integration tests) ───────────────────────
+
+
+@pytest.fixture(scope="session")
+def pg_container():
+    """Start a Postgres container once for the entire test session.
+
+    Kept as a separate fixture so pg_engine can be function-scoped
+    while the container itself is only started once.
+    """
+    from testcontainers.postgres import PostgresContainer  # type: ignore[import]
+
+    with PostgresContainer("postgres:16-alpine") as container:
+        yield container
+
+
+@pytest_asyncio.fixture()
+async def pg_engine(pg_container):
+    """Function-scoped async engine pointing at the Postgres testcontainer.
+
+    Creates the full schema on setup and drops it on teardown, providing
+    complete isolation between integration tests.  Uses NullPool so async
+    connections are always created in the current test event loop.
+    """
+    # Ensure every model is registered with Base.metadata before create_all.
+    from app.models import alert, notification_log, price_history, product  # noqa: F401
+    from app.core.database import Base
+    from sqlalchemy.pool import NullPool
+
+    raw_url: str = pg_container.get_connection_url()
+    async_url = raw_url.replace("+psycopg2", "+asyncpg").replace(
+        "postgresql://", "postgresql+asyncpg://"
+    )
+    engine = create_async_engine(async_url, echo=False, poolclass=NullPool)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield engine
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture()
+async def pg_session(pg_engine) -> AsyncGenerator[AsyncSession, None]:
+    """Async session against the Postgres testcontainer; rolled back on completion."""
+    session_factory = async_sessionmaker(
+        bind=pg_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+    async with session_factory() as session:
+        yield session
+        await session.rollback()

@@ -48,3 +48,29 @@ This file logs the output of the `plan-review` agent for each TODO.md item revie
 **Tasks removed/changed**: 2 — `psycopg2-binary` replaced with `asyncpg` + `aiosqlite` in pyproject.toml; `config.py` task expanded to include all app vars (`CORS_ORIGINS`, `LOG_LEVEL`, `SCRAPE_INTERVAL_MINUTES`) plus `SECRET_KEY` min-length validator
 **Documentation changes**: `CLAUDE.md` (update — env table adds `CORS_ORIGINS`, updates `SECRET_KEY` description, clarifies `DEBUG`); `CHANGELOG.md` (update at implementation time — add `### Added` entry)
 **Key design constraint**: `asyncpg` is the sole Postgres driver for both the async app and Alembic migrations (via `run_sync` pattern) — no `psycopg2-binary` anywhere in the project.
+
+---
+
+## TODO item 3 — Data Models & Migrations (2026-05-25)
+
+**Ambiguities found**: 12
+
+| Category | Finding | Resolution |
+|---|---|---|
+| Model/data design | `direction` field on `PriceAlert` storage unspecified | Native Postgres ENUM type (`alert_direction_enum`); `native_enum=True` in SQLAlchemy |
+| Model/data design | `source_type` on `Product` — type and valid values unspecified | Native PG ENUM `source_type_enum` with values `generic`, `amazon`, `ebay`, `currys` |
+| Model/data design | `channel` and `status` on `NotificationLog` — type and values unspecified | Both native PG ENUMs: `notification_channel_enum` (`email`, `webhook`); `notification_status_enum` (`pending`, `sent`, `failed`) |
+| Integration wiring | Native PG ENUM types are incompatible with SQLite in-memory test DB from item 2 | Integration tests switch to Postgres via `testcontainers[postgres]` (`pg_engine` fixture in `conftest.py`); unit tests keep SQLite |
+| Model/data design | `price` column type unspecified — `Float` loses precision for monetary values | `NUMERIC(12, 4)` — exact decimal, no floating-point drift |
+| Model/data design | `raw_html_hash` algorithm and column length unspecified | SHA-256 hex digest, `VARCHAR(64)`, non-unique index on `raw_html_hash` |
+| Scope gaps | No database indexes mentioned despite hot query paths on price history and alert evaluation | Four named indexes added: `ix_price_record_product_captured`, `ix_price_record_html_hash`, `ix_price_alert_product_active`, `ix_notification_log_alert_sent` |
+| Scope gaps | Schema file organisation undefined — no Create/Read/Update split mentioned | One file per domain with `Base/Create/Read/Update` variants; `schemas/product.py`, `schemas/price.py`, `schemas/alert.py`, `schemas/notification.py` |
+| Error & edge-case handling | Cascade delete policy for `Product` deletion unspecified | Full `cascade="all, delete-orphan"`: Product → PriceRecord + PriceAlert → NotificationLog |
+| Model/data design | `updated_at` auto-update mechanism unspecified | ORM-level `onupdate=func.now()` on Column; no DB trigger required |
+| Model/data design | `PriceAlert.notified_at` vs `NotificationLog.sent_at` — potential redundancy | Both retained: `notified_at` is a denormalized quick-check flag; `sent_at` is the per-delivery audit timestamp |
+| Scope gaps | `Product.url` uniqueness not specified | Unique constraint on `Product.url`; 409 Conflict returned by API on duplicate |
+
+**Tasks added**: 4 — `testcontainers[postgres]` dev dependency; `pg_engine` testcontainer fixture in `conftest.py`; `css_selector` field on `Product` (used by generic scraper in item 4); explicit Alembic migration verification task
+**Tasks removed/changed**: 2 — generic "Pydantic v2 schemas mirroring models" replaced with four explicit schema files with named variants; "Generate and apply migration" expanded to specify four PG ENUM types, four tables, four named indexes in one combined revision
+**Documentation changes**: `backend/pyproject.toml` (update — add testcontainers dep); `backend/tests/conftest.py` (update — add pg_engine fixture); `backend/alembic/env.py` (update — uncomment model imports stub); `CLAUDE.md` (update — models architecture and test structure sections); `CHANGELOG.md` (update at implementation time)
+**Key design constraint**: Native Postgres ENUM types require a split test strategy — unit tests use SQLite in-memory (schema round-trips only), integration tests use a real Postgres testcontainer (`pg_engine` fixture). This `pg_engine` fixture is the canonical test DB for all items from item 3 onwards that touch ENUM columns.

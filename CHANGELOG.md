@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Core domain models: `Product`, `PriceRecord`, `PriceAlert`, `NotificationLog` ORM models with SQLAlchemy 2.0 mapped columns and full cascade-delete relationships
+- Four native Postgres ENUM types: `source_type_enum` (`generic`, `amazon`, `ebay`, `currys`), `alert_direction_enum` (`above`, `below`), `notification_channel_enum` (`email`, `webhook`), `notification_status_enum` (`pending`, `sent`, `failed`)
+- Alembic migration `0002_add_core_domain_models`: creates all four tables, ENUM types, FK constraints, and four named composite indexes (`ix_price_record_product_captured`, `ix_price_record_html_hash`, `ix_price_alert_product_active`, `ix_notification_log_alert_sent`) atomically
+- Pydantic v2 schemas: `ProductCreate/Read/Update`, `PriceRecordCreate/Read`, `AlertCreate/Read/Update`, `NotificationLogRead` — separate from ORM models with `from_attributes=True` on read schemas
+- `testcontainers[postgres]>=4.0` added to dev dependencies for Postgres integration tests
+- `pg_container`, `pg_engine`, and `pg_session` fixtures in `tests/conftest.py` for integration tests against a real Postgres container
 - Backend foundation: FastAPI application factory with async lifespan, CORS middleware, and `GET /health` readiness probe
 - `app.core.config` — pydantic-settings `Settings` class; validates `SECRET_KEY` (≥32 chars), `CORS_ORIGINS` (defaults to `["*"]` in debug, required in production), and `CELERY_BROKER_URL` (falls back to `REDIS_URL`)
 - `app.core.logging` — structlog configured at import time; `ConsoleRenderer` in debug, `JSONRenderer` in production
