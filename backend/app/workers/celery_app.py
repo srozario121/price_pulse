@@ -30,7 +30,11 @@ celery_app = Celery(
 
 celery_app.conf.update(
     # ── Worker pool ───────────────────────────────────────────────────────────
-    worker_pool="celery.concurrency.aio:TaskPool",
+    # "solo" pool runs tasks in the main thread using asyncio.get_event_loop(),
+    # which is the correct approach for async def tasks in Celery 5.x.
+    # celery.concurrency.aio was planned but never shipped in mainline Celery;
+    # "solo" is the idiomatic replacement for async-first task workloads.
+    worker_pool="solo",
     # ── Time limits ───────────────────────────────────────────────────────────
     task_soft_time_limit=120,
     task_time_limit=150,

@@ -147,8 +147,8 @@ shell-backend:  ## Open bash shell inside the running backend container
 # Celery workers (local, no Docker)
 # ---------------------------------------------------------------------------
 .PHONY: worker
-worker:         ## Start Celery worker locally (no Docker)
-	cd backend && uv run celery -A app.workers.celery_app worker --pool=asyncio --loglevel=debug
+worker:         ## Start Celery worker locally (no Docker); pool set in celery_app.py
+	cd backend && uv run celery -A app.workers.celery_app worker --loglevel=debug
 
 .PHONY: beat
 beat:           ## Start Celery Beat scheduler locally (no Docker)

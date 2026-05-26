@@ -226,37 +226,37 @@ Implement the pluggable scraping layer that fetches product pages, extracts pric
 ### Tasks
 
 **Schema and type definitions**
-- [ ] Create `backend/app/models/enums.py` — define `ExtractionStatus(str, Enum)` with `OK = 'ok'`, `EXTRACTION_FAILED = 'extraction_failed'`, `HTTP_ERROR = 'http_error'`
-- [ ] Create `backend/app/schemas/scraper.py` — define `ScrapedResult` Pydantic model: `url: str`, `html: str`, `html_hash: str`, `price: Decimal | None`, `currency: str | None`, `scraped_at: datetime`, `extraction_status: ExtractionStatus`
+- [x] Create `backend/app/models/enums.py` — define `ExtractionStatus(str, Enum)` with `OK = 'ok'`, `EXTRACTION_FAILED = 'extraction_failed'`, `HTTP_ERROR = 'http_error'`
+- [x] Create `backend/app/schemas/scraper.py` — define `ScrapedResult` Pydantic model: `url: str`, `html: str`, `html_hash: str`, `price: Decimal | None`, `currency: str | None`, `scraped_at: datetime`, `extraction_status: ExtractionStatus`
 
 **Scraper layer**
-- [ ] Create `backend/app/scrapers/exceptions.py` — `ScraperError(Exception)` and `UnknownSourceError(ScraperError)`
-- [ ] Define `backend/app/scrapers/base.py` — abstract `BaseScraper` with abstract `fetch(url: str) -> ScrapedResult`; protected `_compute_hash(html: str) -> str` (SHA-256 hex)
-- [ ] Implement `backend/app/scrapers/http_client.py` — async httpx client: 8-UA string pool (random selection per request); per-domain Redis rate limit (key `rate_limit:{domain}`, TTL = `settings.SCRAPE_MIN_DELAY_SECONDS`); robots.txt Redis cache (key `robots:{domain}`, TTL 1 hour, log-and-proceed for disallowed paths); retry on 5xx / 429 / 403 with 1s/2s/4s back-off; 429 honours `Retry-After`; returns `ScrapedResult(extraction_status='http_error')` after retries exhausted
-- [ ] Implement `backend/app/scrapers/generic.py` — `GenericScraper(BaseScraper)`: fetches via `http_client`; uses `parsel.Selector` with `Product.css_selector` (raises `ScraperError` if `None`); extracts currency via `Product.css_selector_currency` mapping symbol → ISO code; returns fully populated `ScrapedResult`
-- [ ] Implement `backend/app/scrapers/amazon.py` — `AmazonScraper(BaseScraper)`: per-task Playwright browser (async with `async_playwright()` → launch → new_context → new_page → `goto(url, timeout=30_000)` → `evaluate(js_snippet)` → close); JS snippet targets `ld+json` `schema.org/Product` or `/Offer` for `price` + `priceCurrency`; returns `ScrapedResult(extraction_status='extraction_failed')` if ld+json absent; raises `ScraperError` for unexpected Playwright exceptions
-- [ ] Create `backend/app/scrapers/registry.py` — `SourceType(str, Enum)` with `GENERIC='generic'`, `AMAZON='amazon'`, `EBAY='ebay'`, `CURRYS='currys'`; `_REGISTRY: dict[SourceType, type[BaseScraper]]` (maps only `GENERIC` and `AMAZON`); `get_scraper(source_type: str) -> BaseScraper` — raises `UnknownSourceError` for unregistered strings (including `ebay` and `currys` until their items)
+- [x] Create `backend/app/scrapers/exceptions.py` — `ScraperError(Exception)` and `UnknownSourceError(ScraperError)`
+- [x] Define `backend/app/scrapers/base.py` — abstract `BaseScraper` with abstract `fetch(url: str) -> ScrapedResult`; protected `_compute_hash(html: str) -> str` (SHA-256 hex)
+- [x] Implement `backend/app/scrapers/http_client.py` — async httpx client: 8-UA string pool (random selection per request); per-domain Redis rate limit (key `rate_limit:{domain}`, TTL = `settings.SCRAPE_MIN_DELAY_SECONDS`); robots.txt Redis cache (key `robots:{domain}`, TTL 1 hour, log-and-proceed for disallowed paths); retry on 5xx / 429 / 403 with 1s/2s/4s back-off; 429 honours `Retry-After`; returns `ScrapedResult(extraction_status='http_error')` after retries exhausted
+- [x] Implement `backend/app/scrapers/generic.py` — `GenericScraper(BaseScraper)`: fetches via `http_client`; uses `parsel.Selector` with `Product.css_selector` (raises `ScraperError` if `None`); extracts currency via `Product.css_selector_currency` mapping symbol → ISO code; returns fully populated `ScrapedResult`
+- [x] Implement `backend/app/scrapers/amazon.py` — `AmazonScraper(BaseScraper)`: per-task Playwright browser (async with `async_playwright()` → launch → new_context → new_page → `goto(url, timeout=30_000)` → `evaluate(js_snippet)` → close); JS snippet targets `ld+json` `schema.org/Product` or `/Offer` for `price` + `priceCurrency`; returns `ScrapedResult(extraction_status='extraction_failed')` if ld+json absent; raises `ScraperError` for unexpected Playwright exceptions
+- [x] Create `backend/app/scrapers/registry.py` — `SourceType(str, Enum)` with `GENERIC='generic'`, `AMAZON='amazon'`, `EBAY='ebay'`, `CURRYS='currys'`; `_REGISTRY: dict[SourceType, type[BaseScraper]]` (maps only `GENERIC` and `AMAZON`); `get_scraper(source_type: str) -> BaseScraper` — raises `UnknownSourceError` for unregistered strings (including `ebay` and `currys` until their items)
 
 **Service layer**
-- [ ] Create `backend/app/services/notifications.py` — `notify_alert(alert_id: int) -> None` stub: logs `{"event": "notify_alert_stub", "alert_id": alert_id}` via structlog and returns `None`. Item 5 replaces with `send_notification.delay(alert_id)`.
-- [ ] Implement `backend/app/services/price_service.py` — `record_price(product_id: int, scraped_result: ScrapedResult) -> PriceRecord`: (1) fetch most recent `PriceRecord` for product; (2) if `raw_html_hash` matches, return existing record (no insert); (3) otherwise insert new `PriceRecord` (propagates `price`, `currency`, `extraction_status` from `ScrapedResult`); (4) call `alert_service.evaluate_alerts(product_id)` only when `extraction_status == ExtractionStatus.OK`
-- [ ] Implement `backend/app/services/alert_service.py` — `evaluate_alerts(product_id: int) -> None`: (1) fetch latest `PriceRecord`; (2) return early (structlog WARNING) if `extraction_status != ExtractionStatus.OK`; (3) load all `is_active=True` alerts for product; (4) for each: skip if `now() < notified_at + timedelta(hours=24)`; compare `price` against `threshold_price` by `direction`; if triggered, set `notified_at = now()` and call `notifications.notify_alert(alert.id)`
+- [x] Create `backend/app/services/notifications.py` — `notify_alert(alert_id: int) -> None` stub: logs `{"event": "notify_alert_stub", "alert_id": alert_id}` via structlog and returns `None`. Item 5 replaces with `send_notification.delay(alert_id)`.
+- [x] Implement `backend/app/services/price_service.py` — `record_price(product_id: int, scraped_result: ScrapedResult) -> PriceRecord`: (1) fetch most recent `PriceRecord` for product; (2) if `raw_html_hash` matches, return existing record (no insert); (3) otherwise insert new `PriceRecord` (propagates `price`, `currency`, `extraction_status` from `ScrapedResult`); (4) call `alert_service.evaluate_alerts(product_id)` only when `extraction_status == ExtractionStatus.OK`
+- [x] Implement `backend/app/services/alert_service.py` — `evaluate_alerts(product_id: int) -> None`: (1) fetch latest `PriceRecord`; (2) return early (structlog WARNING) if `extraction_status != ExtractionStatus.OK`; (3) load all `is_active=True` alerts for product; (4) for each: skip if `now() < notified_at + timedelta(hours=24)`; compare `price` against `threshold_price` by `direction`; if triggered, set `notified_at = now()` and call `notifications.notify_alert(alert.id)`
 
 **Dependencies and configuration**
-- [ ] Add to `backend/pyproject.toml` runtime deps: `playwright>=1.44`, `parsel>=1.9`; replace `celery[redis]` with `celery[redis,asyncio]>=5.4`
-- [ ] Add `SCRAPE_MIN_DELAY_SECONDS: int = 2` to `backend/app/core/config.py` `Settings`
-- [ ] Update `Makefile` `install` target: after `uv sync`, add `cd backend && uv run playwright install chromium`
-- [ ] Register `live_amazon` pytest marker in `backend/pyproject.toml`: `"live_amazon: marks Amazon live-scrape tests; requires celery-playwright service running; flaky in CI due to bot detection — run manually only"`
-- [ ] Update `.env.example`: add `SCRAPE_MIN_DELAY_SECONDS=2`
+- [x] Add to `backend/pyproject.toml` runtime deps: `playwright>=1.44`, `parsel>=1.9`; replace `celery[redis]` with `celery[redis,asyncio]>=5.4`
+- [x] Add `SCRAPE_MIN_DELAY_SECONDS: int = 2` to `backend/app/core/config.py` `Settings`
+- [x] Update `Makefile` `install` target: after `uv sync`, add `cd backend && uv run playwright install chromium`
+- [x] Register `live_amazon` pytest marker in `backend/pyproject.toml`: `"live_amazon: marks Amazon live-scrape tests; requires celery-playwright service running; flaky in CI due to bot detection — run manually only"`
+- [x] Update `.env.example`: add `SCRAPE_MIN_DELAY_SECONDS=2`
 
 **Migrations**
-- [ ] Generate Alembic migration: add `css_selector_currency VARCHAR NULL` to `products` table (`alembic revision --autogenerate -m "add_css_selector_currency"`)
-- [ ] Generate Alembic migration: make `price_records.price` and `price_records.currency` nullable; add `extraction_status VARCHAR(20) NOT NULL DEFAULT 'ok'` with `CHECK` constraint (`alembic revision --autogenerate -m "add_extraction_status_nullable_price"`)
+- [x] Generate Alembic migration: add `css_selector_currency VARCHAR NULL` to `products` table (`alembic revision --autogenerate -m "add_css_selector_currency"`)
+- [x] Generate Alembic migration: make `price_records.price` and `price_records.currency` nullable; add `extraction_status VARCHAR(20) NOT NULL DEFAULT 'ok'` with `CHECK` constraint (`alembic revision --autogenerate -m "add_extraction_status_nullable_price"`)
 
 **Docker**
-- [ ] Create `docker/celery-playwright.Dockerfile` — base: `mcr.microsoft.com/playwright/python:latest`; copies `backend/`; runs `uv sync --no-dev`; CMD: `celery -A app.workers.celery_app worker --pool=asyncio -Q playwright --loglevel=info`
-- [ ] Add `celery-playwright` service to `docker-compose.yml`: built from `celery-playwright.Dockerfile`; env `CELERY_QUEUES=playwright`; `depends_on: [redis, postgres]`
-- [ ] Add `celery-playwright` service override to `docker-compose.dev.yml`: volume mount for hot-reload; `DEBUG=true`
+- [x] Create `docker/celery-playwright.Dockerfile` — base: `mcr.microsoft.com/playwright/python:latest`; copies `backend/`; runs `uv sync --no-dev`; CMD: `celery -A app.workers.celery_app worker --pool=asyncio -Q playwright --loglevel=info`
+- [x] Add `celery-playwright` service to `docker-compose.yml`: built from `celery-playwright.Dockerfile`; env `CELERY_QUEUES=playwright`; `depends_on: [redis, postgres]`
+- [x] Add `celery-playwright` service override to `docker-compose.dev.yml`: volume mount for hot-reload; `DEBUG=true`
 
 ### Test strategy
 
@@ -773,7 +773,7 @@ Write production-grade multi-stage Dockerfiles and finalise compose configuratio
 - [x] Add `smoke` job to `.github/workflows/ci.yml`: runs after `build` job; steps: `docker compose up -d` → polling health-check script (curl loop, max 60 s) → `curl -sf http://localhost/nginx-health` → assert frontend → `docker compose down`; fails PR if stack does not reach healthy state within the timeout
 
 **Playwright service verification**
-- [ ] After pool and path fixes, verify `celery-playwright` starts correctly: `docker compose run --rm celery-playwright celery -A app.workers.celery_app inspect ping`; confirm worker responds and Chromium path is resolved
+- [x] After pool and path fixes, verify `celery-playwright` starts correctly: `docker compose run --rm celery-playwright celery -A app.workers.celery_app inspect ping` → "1 node online / pong"; Chromium 148.0.7778.0 launched and closed cleanly
 
 ### Test strategy
 

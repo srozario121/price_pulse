@@ -21,4 +21,6 @@ COPY backend/ ./backend/
 
 WORKDIR /app/backend
 
-CMD ["uv", "run", "celery", "-A", "app.workers.celery_app", "worker", "--pool=asyncio", "-Q", "playwright", "--loglevel=info"]
+# pool is set in celery_app.py (worker_pool="celery.concurrency.aio:TaskPool")
+# and is NOT passed via CLI because Celery 5.x does not expose "asyncio" as a -P shorthand
+CMD ["uv", "run", "celery", "-A", "app.workers.celery_app", "worker", "-Q", "playwright", "--loglevel=info"]

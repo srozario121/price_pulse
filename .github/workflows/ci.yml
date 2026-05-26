@@ -232,7 +232,8 @@ jobs:
           # Override values that need to be valid for CI
           sed -i 's/^SECRET_KEY=.*/SECRET_KEY=ci-smoke-test-secret-key-minimum-32-chars/' .env
           sed -i 's/^DEBUG=.*/DEBUG=false/' .env
-          sed -i 's/^CORS_ORIGINS=.*/CORS_ORIGINS=http:\/\/localhost/' .env
+          # CORS_ORIGINS must be a JSON list (pydantic-settings v2 JSON-decodes complex fields)
+          sed -i 's|^CORS_ORIGINS=.*|CORS_ORIGINS=["http://localhost"]|' .env
 
       - name: Build images
         run: docker compose build

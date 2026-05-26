@@ -54,7 +54,8 @@ services:
       context: .
       dockerfile: docker/backend.Dockerfile
     image: price-pulse-backend:latest
-    command: celery -A app.workers.celery_app worker --pool=asyncio --loglevel=info
+    # pool is set in celery_app.py; Celery 5.x does not accept "asyncio" as a -P shorthand
+    command: celery -A app.workers.celery_app worker --loglevel=info
     restart: unless-stopped
     env_file: .env
     environment:
