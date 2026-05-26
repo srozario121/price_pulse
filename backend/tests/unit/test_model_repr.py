@@ -11,7 +11,6 @@ import app.models.alert  # noqa: F401
 import app.models.notification_log  # noqa: F401
 import app.models.price_history  # noqa: F401
 import app.models.product  # noqa: F401
-
 from app.models.alert import AlertDirection, PriceAlert
 from app.models.notification_log import NotificationLog, NotificationStatus
 from app.models.price_history import PriceRecord

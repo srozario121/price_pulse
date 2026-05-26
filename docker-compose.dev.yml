@@ -88,6 +88,15 @@ services:
     networks:
       - price-pulse-net
 
+  celery-playwright:
+    build:
+      target: development
+    volumes:
+      - ./backend:/app/backend:cached
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+
 # =============================================================================
 # Additional dev-only volumes
 # =============================================================================

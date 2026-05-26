@@ -195,14 +195,14 @@ Implement the pluggable scraping layer that fetches product pages, extracts pric
 
 ### Tasks
 
-- [ ] Define `backend/app/scrapers/base.py` — abstract `BaseScraper` with `fetch(url) -> ScrapedResult` and `extract_price(html) -> Decimal | None`
-- [ ] Implement `backend/app/scrapers/generic.py` — CSS-selector-driven scraper (selector stored on `Product`)
-- [ ] Implement `backend/app/scrapers/amazon.py` — Amazon-specific price extraction (handle dynamic rendering via httpx + selective parsing)
-- [ ] `backend/app/scrapers/registry.py` — map `source_type` enum to scraper class; raise `UnknownSourceError` for unregistered types
-- [ ] `backend/app/services/price_service.py` — `record_price(product_id, scraped_result)`: deduplicate by html hash, persist `PriceRecord`, trigger alert evaluation
-- [ ] `backend/app/services/alert_service.py` — `evaluate_alerts(product_id)`: load active alerts, compare against latest price, mark triggered alerts
-- [ ] Add `User-Agent` rotation and request throttling to respect `robots.txt` conventions
-- [ ] Add `backend/app/scrapers/http_client.py` — shared async httpx client with retry logic (exponential back-off, 3 retries)
+- [x] Define `backend/app/scrapers/base.py` — abstract `BaseScraper` with `fetch(url) -> ScrapedResult` and `extract_price(html) -> Decimal | None`
+- [x] Implement `backend/app/scrapers/generic.py` — CSS-selector-driven scraper (selector stored on `Product`)
+- [x] Implement `backend/app/scrapers/amazon.py` — Amazon-specific price extraction (handle dynamic rendering via httpx + selective parsing)
+- [x] `backend/app/scrapers/registry.py` — map `source_type` enum to scraper class; raise `UnknownSourceError` for unregistered types
+- [x] `backend/app/services/price_service.py` — `record_price(product_id, scraped_result)`: deduplicate by html hash, persist `PriceRecord`, trigger alert evaluation
+- [x] `backend/app/services/alert_service.py` — `evaluate_alerts(product_id)`: load active alerts, compare against latest price, mark triggered alerts
+- [x] Add `User-Agent` rotation and request throttling to respect `robots.txt` conventions
+- [x] Add `backend/app/scrapers/http_client.py` — shared async httpx client with retry logic (exponential back-off, 3 retries)
 
 ### Test strategy
 

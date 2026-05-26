@@ -13,7 +13,6 @@ Run with: uv run pytest tests/integration/test_models.py -m integration
 from decimal import Decimal
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,11 +29,11 @@ pytestmark = pytest.mark.integration
 
 
 async def _make_product(session: AsyncSession, **kwargs) -> Product:
-    defaults = dict(
-        name="Test Product",
-        url="https://example.com/product",
-        source_type=SourceType.generic,
-    )
+    defaults = {
+        "name": "Test Product",
+        "url": "https://example.com/product",
+        "source_type": SourceType.generic,
+    }
     defaults.update(kwargs)
     product = Product(**defaults)
     session.add(product)
@@ -191,7 +190,6 @@ class TestCascadeDelete:
         pg_session.add(log)
         await pg_session.flush()
 
-        product_id = product.id
         record_id = record.id
         alert_id = alert.id
         log_id = log.id

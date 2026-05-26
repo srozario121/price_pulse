@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Price Scraping Engine: pluggable scraper layer with `BaseScraper` abstract class, `GenericScraper` (CSS-selector-driven), and `AmazonScraper` (Playwright headless browser with ld+json extraction)
+- `ExtractionStatus` enum (`ok`, `extraction_failed`, `http_error`) in `app.models.enums`
+- `ScrapedResult` Pydantic schema in `app.schemas.scraper` capturing URL, HTML, hash, price, currency, and extraction status
+- `app.scrapers.http_client.fetch_page`: shared async httpx client with User-Agent rotation (8 agents), rate-limiting (Redis-backed per-domain TTL), robots.txt checking (log-and-proceed), retry on 5xx/429/403 with exponential back-off [1, 2, 4]s, and Retry-After header support
+- `app.scrapers.registry.get_scraper`: maps `source_type` string to scraper class; raises `UnknownSourceError` for unregistered types (ebay, currys, unknown)
+- `app.services.price_service.record_price`: HTML-hash deduplication, PriceRecord persistence, conditional alert evaluation
+- `app.services.alert_service.evaluate_alerts`: threshold comparison (above/below), 24h cooldown, notification dispatch
+- `app.services.notifications.notify_alert`: stub dispatcher (replaced by Celery task in Item 5)
+- `Product.css_selector_currency` nullable column for per-product currency selector
+- `PriceRecord.price` and `PriceRecord.currency` made nullable; `PriceRecord.extraction_status` VARCHAR(20) column added
+- Alembic migrations 0003 (css_selector_currency) and 0004 (nullable price/currency + extraction_status)
+- `docker/celery-playwright.Dockerfile`: Playwright-capable Celery worker image for Amazon scraping
+- `celery-playwright` service added to `docker-compose.yml` and `docker-compose.dev.yml`
+- `SCRAPE_MIN_DELAY_SECONDS` setting (default 2) added to `app.core.config.Settings`
+- `playwright>=1.44` and `parsel>=1.9` added to backend runtime dependencies
+- `celery[redis,asyncio]` replaces `celery[redis]` in backend dependencies
+- `live_amazon` pytest marker for Amazon live-scrape tests
+- Unit tests for enums, scrapers, http_client, price_service, alert_service, notifications
+- Integration tests for price_service and alert_service against Postgres testcontainer
+
 - Core domain models: `Product`, `PriceRecord`, `PriceAlert`, `NotificationLog` ORM models with SQLAlchemy 2.0 mapped columns and full cascade-delete relationships
 - Four native Postgres ENUM types: `source_type_enum` (`generic`, `amazon`, `ebay`, `currys`), `alert_direction_enum` (`above`, `below`), `notification_channel_enum` (`email`, `webhook`), `notification_status_enum` (`pending`, `sent`, `failed`)
 - Alembic migration `0002_add_core_domain_models`: creates all four tables, ENUM types, FK constraints, and four named composite indexes (`ix_price_record_product_captured`, `ix_price_record_html_hash`, `ix_price_alert_product_active`, `ix_notification_log_alert_sent`) atomically

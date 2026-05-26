@@ -34,6 +34,7 @@ help:           ## Show this help message
 .PHONY: install
 install:        ## Install all deps: uv sync (workspace) + npm install + pre-commit hooks
 	uv sync
+	cd backend && uv run playwright install chromium
 	cd frontend && npm install
 	cd / && npm install --prefix $(CURDIR)
 	pre-commit install --hook-type commit-msg --hook-type pre-commit

@@ -132,9 +132,10 @@ async def pg_engine(pg_container):
     connections are always created in the current test event loop.
     """
     # Ensure every model is registered with Base.metadata before create_all.
-    from app.models import alert, notification_log, price_history, product  # noqa: F401
-    from app.core.database import Base
     from sqlalchemy.pool import NullPool
+
+    from app.core.database import Base
+    from app.models import alert, notification_log, price_history, product  # noqa: F401
 
     raw_url: str = pg_container.get_connection_url()
     async_url = raw_url.replace("+psycopg2", "+asyncpg").replace(

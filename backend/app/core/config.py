@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     SCRAPE_INTERVAL_MINUTES: int = 30
+    SCRAPE_MIN_DELAY_SECONDS: int = 2
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Env var: comma-separated string "http://localhost:5173,https://..."
