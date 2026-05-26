@@ -119,8 +119,7 @@ class TestAlertSchema:
     def test_alert_update_all_fields_optional(self):
         # Arrange / Act
         update = AlertUpdate()
-        # Assert
-        assert update.product_id is None
+        # Assert — product_id is intentionally absent from AlertUpdate
         assert update.threshold_price is None
         assert update.direction is None
         assert update.is_active is None

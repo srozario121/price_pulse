@@ -29,6 +29,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `celery[redis,asyncio]` replaces `celery[redis]` in backend dependencies
 - `live_amazon` pytest marker for Amazon live-scrape tests
 
+### Added (Item 6 — REST API Endpoints)
+
+- `app.api.v1.products`: full product CRUD (`POST/GET/PATCH/DELETE /api/v1/products`); duplicate-URL 409 guard; `?is_active` filter; `created_at DESC` ordering; max page size 100
+- `app.api.v1.prices`: `GET /api/v1/products/{id}/prices` with `from_dt`/`to_dt` ISO 8601 window filters; `POST /api/v1/products/{id}/scrape` dispatching `scrape_product.delay()` and returning 202 `ScrapeJobResponse`
+- `app.api.v1.alerts`: full alert CRUD (`POST/GET/PATCH/DELETE /api/v1/alerts`); `?product_id` and `?is_active` filters; `id ASC` ordering; `product_id` immutable after creation (returns 422 if passed on PATCH)
+- `app.api.v1.router`: aggregated `APIRouter` mounted at `/api/v1` in `main.py`
+- `app.schemas.common`: `PaginatedResponse[T]` generic envelope (`items`, `total`, `limit`, `offset`; `limit` capped at 100) and `ScrapeJobResponse` (`task_id`, `status: "queued"`, `product: ProductRead`)
+- `PriceRecordRead` schema updated: `price` and `currency` are now nullable (matching Item 4 migration); `extraction_status: str` field exposed
+- `AlertUpdate` schema: `product_id` removed; `model_config = ConfigDict(extra="forbid")` ensures 422 on any unknown field
+- `pg_async_client` fixture added to `tests/conftest.py`: mirrors `async_client` but uses Postgres testcontainer, for route integration tests requiring native ENUMs
+- `make generate-openapi` Makefile target: writes `backend/openapi.json` from the live FastAPI app metadata (no server required); committed to git for contract testing
+- `backend/openapi.json`: generated OpenAPI 3.1.0 spec (33 KB) covering all routes, schemas, and response codes
+- 58 new tests: 14 unit (schema validation), 44 integration (CRUD + negative cases via `pg_async_client`)
+
 ### Added (Item 5 — Celery Task Infrastructure)
 
 - `app.workers.celery_app`: Celery application factory with asyncio pool, RedBeat scheduler, task time limits (120s soft / 150s hard), and queue routing

@@ -175,3 +175,43 @@ async def pg_session(pg_engine) -> AsyncGenerator[AsyncSession, None]:
     async with session_factory() as session:
         yield session
         await session.rollback()
+
+
+@pytest_asyncio.fixture()
+async def pg_async_client(pg_engine) -> AsyncGenerator[AsyncClient, None]:
+    """AsyncClient wired to FastAPI using the Postgres testcontainer DB.
+
+    Mirrors ``async_client`` but uses the Postgres engine from ``pg_engine``
+    instead of the SQLite in-memory engine.  Use for route integration tests
+    that involve native Postgres ENUMs or need real DB behaviour.
+
+    The ``get_db`` dependency is overridden so every request uses the same
+    Postgres engine, and each request session is committed on success /
+    rolled back on failure — matching production behaviour.
+    """
+    from app.core.database import get_db
+    from app.main import create_app
+
+    pg_session_factory = async_sessionmaker(
+        bind=pg_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with pg_session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    test_app = create_app()
+    test_app.dependency_overrides[get_db] = override_get_db
+
+    transport = ASGITransport(app=test_app)  # type: ignore[arg-type]
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client

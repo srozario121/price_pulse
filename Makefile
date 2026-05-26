@@ -146,6 +146,18 @@ beat:           ## Start Celery Beat scheduler locally (no Docker)
 	cd backend && uv run celery -A app.workers.celery_app beat --scheduler redbeat.RedBeatScheduler --loglevel=debug
 
 # ---------------------------------------------------------------------------
+# OpenAPI spec
+# ---------------------------------------------------------------------------
+.PHONY: generate-openapi
+generate-openapi:  ## Generate backend/openapi.json from the live FastAPI app (run before each PR)
+	cd backend && \
+	  SECRET_KEY=openapi-generation-dummy-key-min32chars \
+	  DATABASE_URL=postgresql+asyncpg://user:pass@localhost/db \
+	  DEBUG=true \
+	  uv run python -c \
+	  "import json; from app.main import app; open('openapi.json','w').write(json.dumps(app.openapi(), indent=2))"
+
+# ---------------------------------------------------------------------------
 # Code analysis
 # ---------------------------------------------------------------------------
 .PHONY: structure

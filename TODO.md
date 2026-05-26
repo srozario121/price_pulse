@@ -437,23 +437,23 @@ Expose all domain operations via a versioned FastAPI router (`/api/v1`).
 ### Tasks
 
 **Schema definitions**
-- [ ] Create `backend/app/schemas/common.py` — define generic `PaginatedResponse[T](BaseModel)` with fields `items: list[T]`, `total: int`, `limit: int`, `offset: int`; define `ScrapeJobResponse(BaseModel)` with fields `task_id: str`, `status: Literal["queued"]`, `product: ProductRead`
-- [ ] Update `backend/app/schemas/alert.py` — remove `product_id` field from `AlertUpdate` (product FK is read-only after creation); retain all other optional fields
+- [x] Create `backend/app/schemas/common.py` — define generic `PaginatedResponse[T](BaseModel)` with fields `items: list[T]`, `total: int`, `limit: int`, `offset: int`; define `ScrapeJobResponse(BaseModel)` with fields `task_id: str`, `status: Literal["queued"]`, `product: ProductRead`
+- [x] Update `backend/app/schemas/alert.py` — remove `product_id` field from `AlertUpdate` (product FK is read-only after creation); retain all other optional fields
 
 **Celery stub**
-- [ ] Create `backend/app/tasks/scrape.py` stub — plain function `def scrape_product(product_id: int) -> str: raise NotImplementedError("Celery not wired — complete item 5")`; item 5 replaces this with a decorated Celery task and no API changes are needed
+- [x] Create `backend/app/tasks/scrape.py` stub — skipped: Item 5 was already complete; `scrape_product` is a real Celery task; routes call `.delay()` directly
 
 **Route handlers**
-- [ ] Implement `backend/app/api/v1/products.py` — routes with OpenAPI tags/descriptions/response models:
+- [x] Implement `backend/app/api/v1/products.py` — routes with OpenAPI tags/descriptions/response models:
   - `POST /products` → 201 `ProductRead`; raises 409 if URL already exists
   - `GET /products` → 200 `PaginatedResponse[ProductRead]`; optional `?is_active=true/false`; ordered `created_at DESC`; max page size 100
   - `GET /products/{id}` → 200 `ProductRead`; 404 if not found
   - `PATCH /products/{id}` → 200 `ProductRead`; 404 if not found; 409 if URL conflicts with another product
   - `DELETE /products/{id}` → 204 No Content; 404 if not found
-- [ ] Implement `backend/app/api/v1/prices.py` — routes with OpenAPI tags/descriptions/response models:
+- [x] Implement `backend/app/api/v1/prices.py` — routes with OpenAPI tags/descriptions/response models:
   - `GET /products/{id}/prices` → 200 `PaginatedResponse[PriceRecordRead]`; params: `limit`, `offset`, optional `from_dt` (ISO 8601 datetime), `to_dt` (ISO 8601 datetime); ordered `captured_at DESC`; 404 if product not found
-  - `POST /products/{id}/scrape` → 202 `ScrapeJobResponse`; calls `scrape_product(product_id)` stub; 400 if product `is_active=False`; 404 if product not found
-- [ ] Implement `backend/app/api/v1/alerts.py` — routes with OpenAPI tags/descriptions/response models:
+  - `POST /products/{id}/scrape` → 202 `ScrapeJobResponse`; calls `scrape_product.delay(product_id)`; 400 if product `is_active=False`; 404 if product not found
+- [x] Implement `backend/app/api/v1/alerts.py` — routes with OpenAPI tags/descriptions/response models:
   - `POST /alerts` → 201 `AlertRead`; 404 if `product_id` does not exist
   - `GET /alerts` → 200 `PaginatedResponse[AlertRead]`; optional `?product_id=X`; optional `?is_active=true/false`; ordered `id ASC`; max page size 100
   - `GET /alerts/{id}` → 200 `AlertRead`; 404 if not found
@@ -461,15 +461,15 @@ Expose all domain operations via a versioned FastAPI router (`/api/v1`).
   - `DELETE /alerts/{id}` → 204 No Content; 404 if not found
 
 **Router and wiring**
-- [ ] Create `backend/app/api/v1/router.py` — instantiate `APIRouter`; include `products_router`, `prices_router`, `alerts_router`; export `api_router`
-- [ ] Update `backend/app/main.py` — uncomment the router stub (lines 109–111): `from app.api.v1.router import api_router` + `app.include_router(api_router, prefix="/api/v1")`
+- [x] Create `backend/app/api/v1/router.py` — instantiate `APIRouter`; include `products_router`, `prices_router`, `alerts_router`; export `api_router`
+- [x] Update `backend/app/main.py` — uncomment the router stub (lines 109–111): `from app.api.v1.router import api_router` + `app.include_router(api_router, prefix="/api/v1")`
 
 **Test infrastructure**
-- [ ] Add `pg_async_client` fixture to `backend/tests/conftest.py` — mirrors `async_client` but uses `pg_engine` (Postgres testcontainer); overrides `get_db` with a Postgres-backed session factory; function-scoped
+- [x] Add `pg_async_client` fixture to `backend/tests/conftest.py` — mirrors `async_client` but uses `pg_engine` (Postgres testcontainer); overrides `get_db` with a Postgres-backed session factory; function-scoped
 
 **Makefile and tooling**
-- [ ] Add `generate-openapi` target to `Makefile`: `cd backend && uv run python -c "import json; from app.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"`; run manually before each PR
-- [ ] Run `make generate-openapi` after implementation and commit `backend/openapi.json`
+- [x] Add `generate-openapi` target to `Makefile`: `cd backend && uv run python -c "import json; from app.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"`; run manually before each PR
+- [x] Run `make generate-openapi` after implementation and commit `backend/openapi.json`
 
 ### Test strategy
 

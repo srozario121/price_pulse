@@ -30,7 +30,14 @@ class AlertRead(AlertBase):
 
 
 class AlertUpdate(BaseModel):
-    product_id: int | None = None
+    """Partial-update schema for PriceAlert.
+
+    ``product_id`` is intentionally absent — alert ownership is immutable after
+    creation.  Passing ``product_id`` in the request body returns 422.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     threshold_price: Decimal | None = None
     direction: AlertDirection | None = None
     is_active: bool | None = None
