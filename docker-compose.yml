@@ -90,6 +90,29 @@ services:
       - price-pulse-net
 
   # ---------------------------------------------------------------------------
+  # Celery — Playwright worker (Amazon scraping)
+  # ---------------------------------------------------------------------------
+  celery-playwright:
+    build:
+      context: .
+      dockerfile: docker/celery-playwright.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - CELERY_QUEUES=playwright
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - price-pulse-net
+
+  # ---------------------------------------------------------------------------
   # Frontend — React SPA served via Nginx
   # ---------------------------------------------------------------------------
   frontend:

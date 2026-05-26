@@ -5,7 +5,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Index, JSON, String, func
+from sqlalchemy import JSON, BigInteger, DateTime, Enum, ForeignKey, Index, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -14,12 +14,12 @@ if TYPE_CHECKING:
     from app.models.alert import PriceAlert
 
 
-class NotificationChannel(str, enum.Enum):
+class NotificationChannel(enum.StrEnum):
     email = "email"
     webhook = "webhook"
 
 
-class NotificationStatus(str, enum.Enum):
+class NotificationStatus(enum.StrEnum):
     pending = "pending"
     sent = "sent"
     failed = "failed"

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from app.models.price_history import PriceRecord
 
 
-class SourceType(str, enum.Enum):
+class SourceType(enum.StrEnum):
     generic = "generic"
     amazon = "amazon"
     ebay = "ebay"
@@ -33,6 +33,7 @@ class Product(Base):
         nullable=False,
     )
     css_selector: Mapped[str | None] = mapped_column(String, nullable=True)
+    css_selector_currency: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

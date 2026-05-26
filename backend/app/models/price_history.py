@@ -25,14 +25,17 @@ class PriceRecord(Base):
     product_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("product.id", ondelete="CASCADE"), nullable=False
     )
-    price: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
-    currency: Mapped[str] = mapped_column(
-        String(3), server_default=text("'GBP'"), nullable=False
+    price: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    currency: Mapped[str | None] = mapped_column(
+        String(3), server_default=text("'GBP'"), nullable=True
     )
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     raw_html_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    extraction_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'ok'")
+    )
 
     product: Mapped[Product] = relationship("Product", back_populates="price_records")
 

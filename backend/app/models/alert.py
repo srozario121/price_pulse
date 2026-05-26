@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, Numeric, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from app.models.product import Product
 
 
-class AlertDirection(str, enum.Enum):
+class AlertDirection(enum.StrEnum):
     above = "above"
     below = "below"
 

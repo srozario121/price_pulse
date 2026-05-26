@@ -13,7 +13,6 @@ from app.schemas.notification import NotificationLogRead
 from app.schemas.price import PriceRecordCreate, PriceRecordRead
 from app.schemas.product import ProductCreate, ProductRead, ProductUpdate
 
-
 # ── ProductCreate / ProductRead ───────────────────────────────────────────────
 
 

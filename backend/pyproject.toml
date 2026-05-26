@@ -12,11 +12,13 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "asyncpg>=0.29",
-    "celery[redis]>=5.4",
+    "celery[redis,asyncio]>=5.4",
     "redis>=5.0",
     "httpx>=0.27",
     "structlog>=24.1",
     "python-multipart>=0.0.9",
+    "playwright>=1.44",
+    "parsel>=1.9",
 ]
 
 [dependency-groups]
@@ -39,6 +41,7 @@ testpaths = ["tests"]
 markers = [
     "live_api: marks tests that hit real external services (skipped by default)",
     "integration: marks tests that require a real database",
+    "live_amazon: marks Amazon live-scrape tests; requires celery-playwright service running; flaky in CI due to bot detection — run manually only",
 ]
 
 [tool.ruff]
