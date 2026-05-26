@@ -38,6 +38,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.50"
     networks:
       - price-pulse-net
 
@@ -49,7 +54,7 @@ services:
       context: .
       dockerfile: docker/backend.Dockerfile
     image: price-pulse-backend:latest
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+    command: celery -A app.workers.celery_app worker --pool=asyncio --loglevel=info
     restart: unless-stopped
     env_file: .env
     environment:
@@ -62,6 +67,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.00"
     networks:
       - price-pulse-net
 
@@ -86,6 +96,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
     networks:
       - price-pulse-net
 
@@ -109,6 +124,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.00"
     networks:
       - price-pulse-net
 
@@ -134,14 +154,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
     networks:
       - price-pulse-net
 
   # ---------------------------------------------------------------------------
-  # PostgreSQL 15
+  # PostgreSQL 16 (matches testcontainers version used in integration tests)
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-price_pulse}
@@ -155,6 +180,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.50"
     networks:
       - price-pulse-net
 
@@ -172,6 +202,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
     networks:
       - price-pulse-net
 

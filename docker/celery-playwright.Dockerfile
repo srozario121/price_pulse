@@ -10,8 +10,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock* ./
 COPY backend/pyproject.toml backend/
 
-# Install runtime deps only
-RUN uv sync --no-dev --project backend
+# Install runtime deps only (--frozen ensures the lockfile is honoured)
+RUN uv sync --frozen --no-dev --project backend
 
 # Install Playwright browsers
 RUN uv run --project backend playwright install chromium
@@ -21,4 +21,4 @@ COPY backend/ ./backend/
 
 WORKDIR /app/backend
 
-CMD ["uv", "run", "celery", "-A", "app.workers.celery_app", "worker", "--pool=gevent", "-Q", "playwright", "--loglevel=info"]
+CMD ["uv", "run", "celery", "-A", "app.workers.celery_app", "worker", "--pool=asyncio", "-Q", "playwright", "--loglevel=info"]

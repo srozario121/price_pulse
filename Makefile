@@ -167,6 +167,60 @@ generate-openapi:  ## Generate backend/openapi.json from the live FastAPI app (r
 	  "import json; from app.main import app; open('openapi.json','w').write(json.dumps(app.openapi(), indent=2))"
 
 # ---------------------------------------------------------------------------
+# Docker quality gates
+# ---------------------------------------------------------------------------
+.PHONY: lint-docker
+lint-docker:    ## Lint all Dockerfiles with hadolint (fails on ERROR or WARN; INFO is shown but non-fatal)
+	docker run --rm -i hadolint/hadolint hadolint --failure-threshold warning - < docker/backend.Dockerfile
+	docker run --rm -i hadolint/hadolint hadolint --failure-threshold warning - < docker/frontend.Dockerfile
+	docker run --rm -i hadolint/hadolint hadolint --failure-threshold warning - < docker/celery-playwright.Dockerfile
+
+.PHONY: validate-nginx
+validate-nginx: ## Validate nginx.conf syntax via Docker (asserts exit 0)
+	docker run --rm \
+	  --add-host=backend:127.0.0.1 \
+	  -v $(shell pwd)/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro \
+	  nginx:1.27-alpine nginx -t
+
+.PHONY: scan
+scan:           ## Scan built images for CRITICAL CVEs via Trivy (must run make build first)
+	docker run --rm \
+	  -v /var/run/docker.sock:/var/run/docker.sock \
+	  aquasec/trivy:latest image \
+	  --exit-code 1 \
+	  --severity CRITICAL \
+	  price-pulse-backend:latest price-pulse-frontend:latest
+
+.PHONY: smoke
+smoke:          ## Full-stack smoke test: up → health-check → nginx-check → down (exits 1 on failure)
+	@echo "Starting stack..."
+	docker compose up -d
+	@echo "Waiting for backend health (up to 60s)..."
+	@success=false; \
+	for i in $$(seq 1 12); do \
+	  if curl -sf http://localhost:8000/health > /dev/null 2>&1; then \
+	    echo "Backend healthy after $$(( i * 5 ))s"; \
+	    success=true; \
+	    break; \
+	  fi; \
+	  echo "Attempt $$i/12 — not ready yet, sleeping 5s..."; \
+	  sleep 5; \
+	done; \
+	if [ "$$success" = "false" ]; then \
+	  echo "ERROR: backend did not become healthy within 60s"; \
+	  docker compose down; \
+	  exit 1; \
+	fi
+	@echo "Checking nginx health endpoint..."
+	@if ! curl -sf http://localhost/nginx-health > /dev/null 2>&1; then \
+	  echo "ERROR: nginx-health endpoint did not return 200"; \
+	  docker compose down; \
+	  exit 1; \
+	fi
+	@echo "Smoke test passed."
+	docker compose down
+
+# ---------------------------------------------------------------------------
 # Code analysis
 # ---------------------------------------------------------------------------
 .PHONY: structure

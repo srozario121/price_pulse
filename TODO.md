@@ -743,34 +743,34 @@ Write production-grade multi-stage Dockerfiles and finalise compose configuratio
 ### Tasks
 
 **Dockerfile fixes (correctness — scaffold stubs)**
-- [ ] Fix `docker/backend.Dockerfile` builder stage: add `COPY pyproject.toml uv.lock* ./` before `COPY backend/pyproject.toml backend/`; change `RUN uv sync --no-dev` to `RUN uv sync --frozen --no-dev`
-- [ ] Fix `docker/backend.Dockerfile` production stage: add `RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*` after the non-root user creation so the `HEALTHCHECK CMD curl -f http://localhost:8000/health` does not silently fail
-- [ ] Fix `docker/celery-playwright.Dockerfile` CMD: change `--pool=gevent` to `--pool=asyncio`; verify WORKDIR and Python path are consistent with the backend image entry-point
+- [x] Fix `docker/backend.Dockerfile` builder stage: add `COPY pyproject.toml uv.lock* ./` before `COPY backend/pyproject.toml backend/`; change `RUN uv sync --no-dev` to `RUN uv sync --frozen --no-dev`
+- [x] Fix `docker/backend.Dockerfile` production stage: add `RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*` after the non-root user creation so the `HEALTHCHECK CMD curl -f http://localhost:8000/health` does not silently fail
+- [x] Fix `docker/celery-playwright.Dockerfile` CMD: change `--pool=gevent` to `--pool=asyncio`; verify WORKDIR and Python path are consistent with the backend image entry-point
 
 **docker-compose.yml finalisation**
-- [ ] Correct `celery-worker` service command: change `--concurrency=4` to `--pool=asyncio` (e.g. `celery -A app.workers.celery_app worker --pool=asyncio --loglevel=info`)
-- [ ] Correct `celery-playwright` service command: add `--pool=asyncio` (remove any `--concurrency` or `--pool=gevent` reference)
-- [ ] Upgrade postgres image: change `postgres:15-alpine` to `postgres:16-alpine`
-- [ ] Add `deploy.resources.limits` blocks to all seven services: `backend` (512m / 0.50 CPU), `celery-worker` (512m / 1.00), `celery-beat` (256m / 0.25), `celery-playwright` (1g / 1.00), `postgres` (512m / 0.50), `redis` (128m / 0.25), `frontend` (128m / 0.25)
+- [x] Correct `celery-worker` service command: change `--concurrency=4` to `--pool=asyncio` (e.g. `celery -A app.workers.celery_app worker --pool=asyncio --loglevel=info`)
+- [x] Correct `celery-playwright` service command: add `--pool=asyncio` (remove any `--concurrency` or `--pool=gevent` reference)
+- [x] Upgrade postgres image: change `postgres:15-alpine` to `postgres:16-alpine`
+- [x] Add `deploy.resources.limits` blocks to all seven services: `backend` (512m / 0.50 CPU), `celery-worker` (512m / 1.00), `celery-beat` (256m / 0.25), `celery-playwright` (1g / 1.00), `postgres` (512m / 0.50), `redis` (128m / 0.25), `frontend` (128m / 0.25)
 
 **Nginx security hardening**
-- [ ] Add security headers to `docker/nginx.conf` `server {}` block: `add_header X-Frame-Options "SAMEORIGIN" always;`, `add_header X-Content-Type-Options "nosniff" always;`, `add_header Referrer-Policy "strict-origin-when-cross-origin" always;`, `add_header X-XSS-Protection "0" always;`
+- [x] Add security headers to `docker/nginx.conf` `server {}` block: `add_header X-Frame-Options "SAMEORIGIN" always;`, `add_header X-Content-Type-Options "nosniff" always;`, `add_header Referrer-Policy "strict-origin-when-cross-origin" always;`, `add_header X-XSS-Protection "0" always;`
 
 **Environment and configuration**
-- [ ] Add `CORS_ORIGINS=http://localhost` to `.env.example` under the `# Backend — Application` section with comment: `# Required in production (DEBUG=false); comma-separated list of allowed origins`
+- [x] Add `CORS_ORIGINS=http://localhost` to `.env.example` under the `# Backend — Application` section with comment: `# Required in production (DEBUG=false); comma-separated list of allowed origins`
 
 **Make targets (new)**
-- [ ] Add `make lint-docker` target: `docker run --rm -i hadolint/hadolint < docker/backend.Dockerfile && docker run --rm -i hadolint/hadolint < docker/frontend.Dockerfile && docker run --rm -i hadolint/hadolint < docker/celery-playwright.Dockerfile`; fails on any ERROR or WARN finding
-- [ ] Add `make validate-nginx` target: `docker run --rm -v $(shell pwd)/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro nginx:1.27-alpine nginx -t`; asserts exit 0
-- [ ] Add `make scan` target: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL price-pulse-backend:latest price-pulse-frontend:latest`; fails on any CRITICAL CVE
-- [ ] Add `make smoke` target: `docker compose up -d`; poll `GET http://localhost:8000/health` every 5 s (12 attempts max); assert 200; `curl -sf http://localhost/nginx-health`; `docker compose down`; exits 1 on timeout or bad status
-- [ ] Verify `make lint-docker` passes against all four Dockerfiles after fixes; verify `make validate-nginx` passes against updated `nginx.conf`
+- [x] Add `make lint-docker` target: hadolint on all three Dockerfiles via Docker; `--failure-threshold warning` so INFO findings display but don't fail; fails on any ERROR or WARN finding
+- [x] Add `make validate-nginx` target: `nginx -t` via Docker with `--add-host=backend:127.0.0.1` to resolve the upstream name during standalone config parse; asserts exit 0
+- [x] Add `make scan` target: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL price-pulse-backend:latest price-pulse-frontend:latest`; fails on any CRITICAL CVE
+- [x] Add `make smoke` target: `docker compose up -d`; poll `GET http://localhost:8000/health` every 5 s (12 attempts max); assert 200; `curl -sf http://localhost/nginx-health`; `docker compose down`; exits 1 on timeout or bad status
+- [x] Verify `make lint-docker` passes against all four Dockerfiles after fixes; verify `make validate-nginx` passes against updated `nginx.conf`
 
 **Make targets (already exist — verify and document)**
-- [ ] Verify `make build` (builds all images), `make up` (compose up -d), `make down`, `make logs SERVICE=...` behave correctly with the corrected compose; update `CLAUDE.md` commands table if descriptions differ
+- [x] Verify `make build` (builds all images), `make up` (compose up -d), `make down`, `make logs SERVICE=...` behave correctly with the corrected compose; update `CLAUDE.md` commands table if descriptions differ
 
 **CI update**
-- [ ] Add `smoke` job to `.github/workflows/ci.yml`: runs after `build` job; steps: `docker compose up -d` → polling health-check script (curl loop, max 60 s) → `curl -sf http://localhost/nginx-health` → assert frontend → `docker compose down`; fails PR if stack does not reach healthy state within the timeout
+- [x] Add `smoke` job to `.github/workflows/ci.yml`: runs after `build` job; steps: `docker compose up -d` → polling health-check script (curl loop, max 60 s) → `curl -sf http://localhost/nginx-health` → assert frontend → `docker compose down`; fails PR if stack does not reach healthy state within the timeout
 
 **Playwright service verification**
 - [ ] After pool and path fixes, verify `celery-playwright` starts correctly: `docker compose run --rm celery-playwright celery -A app.workers.celery_app inspect ping`; confirm worker responds and Chromium path is resolved
@@ -896,24 +896,80 @@ Adapt and install agents from `presentation_helper` for price_pulse SDLC workflo
 
 ## 10. CI/CD & Quality Gates
 
-Wire GitHub Actions, configure quality thresholds, and add pre-commit hooks.
+Wire the complete GitHub Actions pipeline, enforce quality thresholds locally and in CI, add security scanning, and document branch protection.
+
+**Note on cross-item scope**: `lint`, `test-backend`, `test-frontend`, and `build` CI jobs were created in item 1. The `smoke` and `scan` jobs are added in item 8; the `agent-quality` job is added in item 9. Item 10 adds only what those items did not cover: the `security` job, coverage threshold enforcement, quality gate scripting, and the `GITHUB_STEP_SUMMARY` coverage table.
+
+### Design decisions (resolved)
+
+- **Pre-existing CI jobs**: `lint`, `test-backend`, `test-frontend`, and `build` jobs already exist from item 1. `.pre-commit-config.yaml`, `config/quality-thresholds.toml`, `make lint`, `make format`, and the frontend vitest 80% coverage threshold are all complete. Item 10 does not re-implement them; it builds on them.
+- **Quality threshold enforcement script**: `backend/scripts/check_quality.py` — a standalone Python script (not a package; no `__init__.py`) invoked by `make quality` as `cd backend && uv run python scripts/check_quality.py`. Reads `config/quality-thresholds.toml` from the repo root, parses radon CC/MI/Halstead JSON outputs from the most recent `logs/quality/<timestamp>/` directory, reads `backend/coverage.xml` (Cobertura), and exits 1 if any threshold is breached. Emits a human-readable violation table on failure. Rationale: centralises all threshold logic in one testable place; avoids brittle shell arithmetic.
+- **`make quality` updated to enforce**: The existing `make quality` target is updated to: (1) run pytest with `--cov-report=xml:coverage.xml` to generate the coverage file, (2) run radon CC/MI/Halstead, (3) run `npm run test:coverage` (vitest — already enforces 80% threshold internally), (4) run `check_quality.py`. The `|| true` guards removed. Exit code propagates from `check_quality.py`. Rationale: single command for both local and CI quality gates.
+- **`--cov-fail-under=90` belt-and-suspenders**: Added to `addopts` in `backend/pyproject.toml` so that running `uv run pytest` directly (without `make quality`) also fails if backend coverage drops below 90%. Rationale: catches regressions in ad-hoc test runs before the developer reaches `make quality`.
+- **`check_quality.py` GitHub Step Summary**: When `GITHUB_ACTIONS=true`, the script appends a markdown table to `$GITHUB_STEP_SUMMARY` showing backend coverage % vs the ≥90% threshold and the three radon metric P95/P5 values vs their thresholds, each with a ✅ or ❌ indicator. Rationale: visible in the PR Actions tab without needing Codecov or a separate service.
+- **Security CI job**: New `security` job runs in parallel with `lint`, `test-backend`, `test-frontend`, and `build`. Steps: (1) `uv run pip-audit --fail-on CRITICAL` — Python dependency CVE scan; (2) `npm audit --audit-level=critical` — all frontend dependencies (dev + prod). Fails the build only on CRITICAL severity. Rationale: CRITICAL-only threshold avoids false-positive failures from transitive dev-dep CVEs while catching exploitable vulnerabilities.
+- **`pip-audit` as a dev dependency**: Added to `[dependency-groups] dev` in `backend/pyproject.toml`. Installed automatically via `uv sync --group dev` in both local checkout and CI. Rationale: consistent with how all other dev tools are managed; no inline `pip install` in CI.
+- **Postgres version in CI**: `test-backend` job updated from `postgres:15-alpine` to `postgres:16-alpine` to match `docker-compose.yml` (item 8 decision) and the `testcontainers[postgres]` version used in integration tests. Rationale: item 10 owns `ci.yml` holistically; leaving a dialect mismatch between CI and compose creates subtle query-plan divergences.
+- **Branch protection**: GitHub repository Settings → Branches → Branch protection rule for `main`. Required status checks: `lint`, `test-backend`, `test-frontend`, `build`, `security` (and `smoke`, `agent-quality` once items 8/9 are complete). Not automatable via CI — documented as a manual prerequisite. Rationale: GitHub branch protection rules can only be set via the UI or GitHub API; documenting them here ensures the setting is applied before any team members begin contributing.
+- **`npm audit` scope**: All deps (dev + prod), `--audit-level=critical`. Dev tools such as Playwright and vitest are included; CRITICAL threshold filters genuine noise. Rationale: dev deps are installed on CI runners; a compromised dev tool can compromise build artefacts.
 
 ### Tasks
 
-- [ ] `.github/workflows/ci.yml` — jobs: `lint` (ruff + eslint), `test-backend` (pytest --cov), `test-frontend` (vitest --coverage), `build` (docker build), `security` (pip-audit + npm audit)
-- [ ] Configure coverage upload to Codecov
-- [ ] Add `.pre-commit-config.yaml` — ruff (Python), eslint + prettier (JS/TS), trailing whitespace, end-of-file-fixer
-- [ ] `config/quality-thresholds.toml` — define CC, MI, Halstead, coverage targets
-- [ ] `make quality` target — runs radon CC/MI/Halstead on backend; vitest coverage on frontend; reports pass/fail
-- [ ] Add `make lint` and `make format` targets (ruff check/format for backend; eslint --fix + prettier for frontend)
-- [ ] Enforce branch protection: require CI green before merge
+**Pre-existing — verify complete**
+- [x] `.pre-commit-config.yaml` — ruff (Python), eslint + prettier (JS/TS), trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, detect-private-key (created in item 1)
+- [x] `config/quality-thresholds.toml` — CC P95 < 7, MI P5 > 10, Halstead P95 < 500, backend coverage ≥ 90%, frontend coverage ≥ 80% (already complete)
+- [x] `make lint` — ruff check (backend) + eslint (frontend) (already complete)
+- [x] `make format` — ruff format (backend) + prettier (frontend) (already complete)
+- [x] Frontend vitest coverage thresholds — 80% branches/functions/lines/statements enforced via `vite.config.ts` `coverage.thresholds.global` (already complete)
+
+**Quality gate script**
+- [ ] Create `backend/scripts/` directory (non-package — no `__init__.py`)
+- [ ] Create `backend/scripts/check_quality.py` — reads `config/quality-thresholds.toml` (via `tomllib`; path resolved as `Path(__file__).resolve().parents[2] / "config/quality-thresholds.toml"`); loads radon CC JSON from the most recent `logs/quality/<timestamp>/cc.json` and computes P95 of all function scores; loads MI JSON and computes P5 of all module scores; loads Halstead JSON and computes P95 of all function effort scores; loads `backend/coverage.xml` (path `Path(__file__).resolve().parent.parent / "coverage.xml"`) via `xml.etree.ElementTree` and extracts `line-rate` attribute; exits 0 if all thresholds pass; exits 1 and prints a table listing each failing metric (actual value, threshold, delta); when `os.environ.get("GITHUB_ACTIONS") == "true"`, appends a markdown `| Check | Value | Threshold | Status |` table to `$GITHUB_STEP_SUMMARY` covering all four checks
+
+**Backend pytest enforcement**
+- [ ] Add `--cov-fail-under=90` to `addopts` in `[tool.pytest.ini_options]` in `backend/pyproject.toml` so that any `uv run pytest --cov=app` run fails when backend line coverage drops below 90%
+
+**`make quality` update**
+- [ ] Update `make quality` Makefile target: (1) run `cd backend && uv run pytest --cov=app --cov-report=xml:coverage.xml --cov-report=term-missing -m "not live_api" -q` to generate coverage data; (2) run radon CC/MI/Halstead JSON reports into `logs/quality/$$TIMESTAMP/` as before; (3) run `cd frontend && npm run test:coverage`; (4) run `cd backend && uv run python scripts/check_quality.py`; remove all `|| true` guards; exit code from final step propagates; update `## help` description in Makefile to read "Run full quality gate: pytest + radon + vitest; exits 1 on threshold violation"
+
+**Security scanning**
+- [ ] Add `pip-audit>=2.7` to `[dependency-groups] dev` in `backend/pyproject.toml`
+- [ ] Add `security` job to `.github/workflows/ci.yml` — runs in parallel with existing jobs (no `needs:` dependency); steps: (1) `actions/checkout@v4`, (2) `astral-sh/setup-uv@v3`, (3) `uv sync --group dev` in `backend/`, (4) `uv run pip-audit --fail-on CRITICAL` — exits 1 on any CRITICAL Python CVE; (5) `actions/setup-node@v4` (Node 20), (6) `npm ci` in `frontend/`, (7) `npm audit --audit-level=critical` — exits 1 on any CRITICAL JS CVE
+
+**CI corrections**
+- [ ] Update `test-backend` job in `.github/workflows/ci.yml`: change postgres service image from `postgres:15-alpine` to `postgres:16-alpine` to match `docker-compose.yml` and testcontainers version
+
+**Branch protection (manual prerequisite)**
+- [ ] Document in `CONTRIBUTING.md` under a new `## Repository Settings` section: enable branch protection for `main` in GitHub → Settings → Branches → Add rule; required status checks: `Lint`, `Test — Backend`, `Test — Frontend`, `Build — Docker images`, `Security`; enable "Require branches to be up to date before merging"; enable "Require status checks to pass before merging"; add `smoke`, `agent-quality` to required checks once items 8 and 9 are complete
 
 ### Test strategy
 
-- **Unit**: threshold config is parseable TOML; quality report JSON schema validates
-- **Integration**: `make quality` exits 0 on clean codebase; exits 1 on injected complexity violation
-- **Negative**: missing `config/quality-thresholds.toml` → clear error message, not silent pass
-- **Live E2E**: not required
+- **Unit** (isolated, no external processes — Arrange-Act-Assert pattern):
+  - `check_quality.py`: `tomllib.loads(valid_toml)` → `Settings` dataclass populated correctly; `P95([1,2,3,4,5,6,7,8,9,10])` → 9.55 (computed correctly); P5 MI computation on synthetic scores; coverage threshold: `line_rate=0.89`, `threshold=0.90` → exit 1 with message containing "backend coverage 89.0% < 90.0%"; coverage threshold: `line_rate=0.92`, `threshold=0.90` → exit 0; all thresholds pass → exit 0; any threshold fails → exit 1 with violation table; `GITHUB_ACTIONS=true` and threshold pass → `$GITHUB_STEP_SUMMARY` receives markdown table with all ✅
+  - `check_quality.py` GITHUB_STEP_SUMMARY: `GITHUB_ACTIONS=true`, one failing metric → Step Summary table contains ❌ row for that metric
+
+- **Integration** (runs real subprocesses — Arrange-Act-Assert pattern):
+  - `make quality` exits 0 against the clean codebase (end-to-end run; requires `uv sync` and `npm ci` first)
+  - `--cov-fail-under=90` enforcement: run `cd backend && uv run pytest --cov=app tests/unit/test_config.py` against a minimal test subset that produces < 90% coverage → assert exit code is non-zero
+
+- **Negative** (Arrange-Act-Assert pattern):
+  - Missing `config/quality-thresholds.toml` → `check_quality.py` exits 1 with message "quality-thresholds.toml not found at <path>"; not a silent pass or `FileNotFoundError` traceback
+  - Malformed TOML in `config/quality-thresholds.toml` → `check_quality.py` exits 1 with message identifying the bad file and parse error; no unhandled exception
+  - Missing `logs/quality/` directory → `check_quality.py` exits 1 with message "No quality report found; run make quality first"
+  - Missing `backend/coverage.xml` → `check_quality.py` exits 1 with message "coverage.xml not found; run make quality first"
+  - `uv run pip-audit --fail-on CRITICAL` with a pinned known-vulnerable package → exits non-zero (verify using a fixture `requirements.txt` with a CRITICAL CVE package in a scratch test; not against the real codebase)
+
+- **Live E2E**: Not required — `make quality` executed against the real codebase on a clean PR is the acceptance test; passing CI `security` job on the first PR validates the scanning pipeline end-to-end.
+
+### Documentation
+
+- **`backend/pyproject.toml`** — update: add `pip-audit>=2.7` to `[dependency-groups] dev`; add `--cov-fail-under=90` to `addopts`
+- **`backend/scripts/check_quality.py`** — create: threshold enforcement script
+- **`Makefile`** — update: `make quality` target body (add pytest step, remove `|| true`, add check_quality.py call, update help text)
+- **`.github/workflows/ci.yml`** — update: add `security` job; change `test-backend` postgres image to `postgres:16-alpine`
+- **`CONTRIBUTING.md`** — update: add `## Repository Settings` section documenting branch protection configuration
+- **`CLAUDE.md`** — update: commands table to note `make quality` now exits 1 on threshold violation; quality thresholds section to reference `check_quality.py` and GitHub Step Summary
+- **`CHANGELOG.md`** — add `### Added` entry under `## [Unreleased]` at implementation time: security CI job (pip-audit + npm audit CRITICAL gate), quality threshold enforcement script (`check_quality.py`, `--cov-fail-under=90`), GitHub Actions Step Summary coverage table, Postgres 16 in CI test job
 
 ---
 

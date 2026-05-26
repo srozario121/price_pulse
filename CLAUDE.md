@@ -75,6 +75,12 @@ make beat                        # start celery beat scheduler
 make build                       # build all Docker images
 make build SERVICE=backend       # build single image
 
+# Docker quality gates
+make lint-docker                 # hadolint all Dockerfiles (fails on ERROR/WARN; INFO is shown but non-fatal)
+make validate-nginx              # nginx -t syntax check of docker/nginx.conf via Docker (--add-host=backend:127.0.0.1)
+make scan                        # Trivy CRITICAL CVE scan on built backend + frontend images
+make smoke                       # full-stack smoke test: up → health poll → nginx-health → down
+
 # Code analysis
 make structure                   # show backend package tree with module counts
 ```

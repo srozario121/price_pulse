@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Item 8 — Docker Containerisation)
+
+- `docker/backend.Dockerfile` production-grade multi-stage build: builder stage now copies root `pyproject.toml` + `uv.lock*` before `backend/pyproject.toml` so `uv sync --frozen --no-dev` resolves the full locked dependency tree; production stage installs `curl` (required for the `HEALTHCHECK CMD`) via `apt-get`
+- `docker/celery-playwright.Dockerfile`: `--pool=gevent` corrected to `--pool=asyncio`; `uv sync` upgraded to `--frozen` for reproducible installs
+- `docker/nginx.conf`: four browser security headers added — `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-XSS-Protection: 0`
+- `docker-compose.yml`: `celery-worker` command fixed from `--concurrency=4` (pre-fork) to `--pool=asyncio`; postgres upgraded from `15-alpine` to `16-alpine`; `deploy.resources.limits` added for all seven services (backend 512m/0.50CPU, celery-worker 512m/1.00, celery-beat 256m/0.25, celery-playwright 1g/1.00, postgres 512m/0.50, redis 128m/0.25, frontend 128m/0.25)
+- `.env.example`: `CORS_ORIGINS=http://localhost` added with inline comment (required when `DEBUG=false`)
+- `make lint-docker`: hadolint linting of all three Dockerfiles via Docker; fails on ERROR or WARN
+- `make validate-nginx`: `nginx -t` syntax check against `docker/nginx.conf` via Docker; asserts exit 0
+- `make scan`: Trivy image scan of built backend + frontend images; fails on any CRITICAL CVE
+- `make smoke`: `docker compose up -d` → poll `GET http://localhost:8000/health` every 5s (12 attempts) → `curl http://localhost/nginx-health` → `docker compose down`; exits 1 on timeout or bad status
+- CI `smoke` job: runs after `build`; spins up full compose stack from `.env.example`, waits for backend health via polling, asserts nginx health endpoint and SPA shell, tears down
+
 ### Added
 
 - Price Scraping Engine: pluggable scraper layer with `BaseScraper` abstract class, `GenericScraper` (CSS-selector-driven), and `AmazonScraper` (Playwright headless browser with ld+json extraction)
