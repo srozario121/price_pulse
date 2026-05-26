@@ -20,6 +20,15 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-minimum-32-characters-long"
 os.environ.setdefault("DEBUG", "true")
 os.environ.setdefault("CORS_ORIGINS", '["http://localhost:5173"]')
 
+# ── Testcontainers: Docker Desktop socket path + disable Ryuk on macOS ────────
+# Docker Desktop on macOS uses a non-standard socket path; testcontainers
+# defaults to /var/run/docker.sock which doesn't exist.  Ryuk (the container
+# reaper) also fails on this setup — disabling it is safe for local test runs.
+os.environ.setdefault(
+    "DOCKER_HOST", "unix:///Users/saviorozario/.docker/run/docker.sock"
+)
+os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
+
 # ── Now it's safe to import app modules ───────────────────────────────────────
 from collections.abc import AsyncGenerator
 

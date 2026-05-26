@@ -26,9 +26,7 @@ class PriceRecord(Base):
         BigInteger, ForeignKey("product.id", ondelete="CASCADE"), nullable=False
     )
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
-    currency: Mapped[str | None] = mapped_column(
-        String(3), server_default=text("'GBP'"), nullable=True
-    )
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

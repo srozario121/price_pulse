@@ -33,7 +33,7 @@ def _make_scraped_result(
         html_hash=html_hash,
         price=price,
         currency=currency,
-        scraped_at=datetime.utcnow(),
+        scraped_at=datetime.now(UTC),
         extraction_status=status,
     )
 

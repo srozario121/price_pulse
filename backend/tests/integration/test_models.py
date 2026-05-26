@@ -283,14 +283,26 @@ class TestConstraintViolations:
         with pytest.raises(IntegrityError):
             await pg_session.flush()
 
-    async def test_price_record_with_null_price_raises_integrity_error(
+    async def test_price_record_with_null_price_is_allowed(
         self, pg_session: AsyncSession
     ):
+        """Item 4 made price nullable to store failed-scrape records.
+        NULL price is now a valid state (extraction_status='http_error').
+        """
         # Arrange
         product = await _make_product(pg_session, url="https://example.com/null-price")
 
-        # Act / Assert — bypass Pydantic, go straight to ORM
-        record = PriceRecord(product_id=product.id, price=None)  # type: ignore[arg-type]
+        # Act — price=None is valid for failed scrapes
+        record = PriceRecord(
+            product_id=product.id,
+            price=None,
+            currency=None,
+            extraction_status="http_error",
+        )
         pg_session.add(record)
-        with pytest.raises((IntegrityError, Exception)):
-            await pg_session.flush()
+        await pg_session.flush()
+
+        # Assert — record persisted with NULL price
+        assert record.id is not None
+        assert record.price is None
+        assert record.extraction_status == "http_error"
