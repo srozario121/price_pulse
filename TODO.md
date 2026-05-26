@@ -559,54 +559,54 @@ Scaffold and implement the React frontend: product dashboard with infinite-scrol
 ### Tasks
 
 **Package and tooling setup**
-- [ ] Update `frontend/package.json` runtime deps: add `tailwindcss`, `postcss`, `autoprefixer`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `tailwindcss-animate`, `sonner`, `react-hook-form`, `@hookform/resolvers`, `zod`, `react-day-picker`, `date-fns`, `react-intersection-observer`
-- [ ] Update `frontend/package.json` devDeps: add `openapi-typescript`, `@playwright/test`; add script `"generate-types": "npx openapi-typescript ../backend/openapi.json -o src/api/types.ts"`
-- [ ] Run `npx shadcn-ui@latest init` — select TypeScript, CSS variables, `tailwind.config.ts`, `src/globals.css`, `@/` import alias; verify `darkMode: 'class'` in `tailwind.config.ts` and `content: ['./src/**/*.{ts,tsx}']`
-- [ ] Install shadcn/ui components via CLI: `npx shadcn-ui@latest add button card dialog dropdown-menu input label select skeleton table badge form popover calendar alert-dialog`
-- [ ] Update `tsconfig.app.json`: add `"paths": {"@/*": ["./src/*"]}` to `compilerOptions`; update `"include"` to `["src", "tests"]`
-- [ ] Update `vite.config.ts`: add `import path from 'path'`; add `resolve: { alias: { "@": path.resolve(__dirname, "./src") } }` to `defineConfig`
-- [ ] Create `frontend/playwright.config.ts`: `baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173'`; `testDir: './tests/e2e'`; `use: { headless: true }`; screenshot on failure
-- [ ] Update `Makefile` `install` target: add `cd frontend && npx playwright install chromium` after `cd frontend && npm install`
-- [ ] Add `make test-e2e` Makefile target: `cd frontend && npx playwright test`
+- [x] Update `frontend/package.json` runtime deps: add `tailwindcss`, `postcss`, `autoprefixer`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `tailwindcss-animate`, `sonner`, `react-hook-form`, `@hookform/resolvers`, `zod`, `react-day-picker`, `date-fns`, `react-intersection-observer`
+- [x] Update `frontend/package.json` devDeps: add `openapi-typescript`, `@playwright/test`; add script `"generate-types": "npx openapi-typescript ../backend/openapi.json -o src/api/types.ts"`
+- [x] Run `npx shadcn-ui@latest init` — select TypeScript, CSS variables, `tailwind.config.ts`, `src/globals.css`, `@/` import alias; verify `darkMode: 'class'` in `tailwind.config.ts` and `content: ['./src/**/*.{ts,tsx}']`
+- [x] Install shadcn/ui components via CLI: `npx shadcn-ui@latest add button card dialog dropdown-menu input label select skeleton table badge form popover calendar alert-dialog`
+- [x] Update `tsconfig.app.json`: add `"paths": {"@/*": ["./src/*"]}` to `compilerOptions`; update `"include"` to `["src", "tests"]`
+- [x] Update `vite.config.ts`: add `import path from 'path'`; add `resolve: { alias: { "@": path.resolve(__dirname, "./src") } }` to `defineConfig`
+- [x] Create `frontend/playwright.config.ts`: `baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173'`; `testDir: './tests/e2e'`; `use: { headless: true }`; screenshot on failure
+- [x] Update `Makefile` `install` target: add `cd frontend && npx playwright install chromium` after `cd frontend && npm install`
+- [x] Add `make test-e2e` Makefile target: `cd frontend && npx playwright test`
 
 **TypeScript types and API client**
-- [ ] Create `frontend/src/api/types.ts` — hand-write placeholder TypeScript interfaces: `ProductRead`, `ProductCreate`, `ProductUpdate`, `PriceRecordRead`, `AlertRead`, `AlertCreate`, `AlertUpdate`, `PaginatedResponse<T>` (items, total, limit, offset), `ScrapeJobResponse` (task_id, status, product); add comment `// Run make generate-types to replace with generated types after item 6 is complete`
-- [ ] Create `frontend/src/api/client.ts` — axios instance `baseURL: import.meta.env.VITE_API_URL ?? ''`; response error interceptor extracting `{detail: string}` from 4xx/5xx; `productsApi`: `list(params)`, `get(id)`, `create(data)`, `update(id, data)`, `remove(id)`, `scrape(id)`; `pricesApi`: `list(productId, params)`; `alertsApi`: `list(params)`, `get(id)`, `create(data)`, `update(id, data)`, `remove(id)` — all typed with interfaces from `src/api/types.ts`
+- [x] Create `frontend/src/api/types.ts` — hand-write placeholder TypeScript interfaces: `ProductRead`, `ProductCreate`, `ProductUpdate`, `PriceRecordRead`, `AlertRead`, `AlertCreate`, `AlertUpdate`, `PaginatedResponse<T>` (items, total, limit, offset), `ScrapeJobResponse` (task_id, status, product); add comment `// Run make generate-types to replace with generated types after item 6 is complete`
+- [x] Create `frontend/src/api/client.ts` — axios instance `baseURL: import.meta.env.VITE_API_URL ?? ''`; response error interceptor extracting `{detail: string}` from 4xx/5xx; `productsApi`: `list(params)`, `get(id)`, `create(data)`, `update(id, data)`, `remove(id)`, `scrape(id)`; `pricesApi`: `list(productId, params)`; `alertsApi`: `list(params)`, `get(id)`, `create(data)`, `update(id, data)`, `remove(id)` — all typed with interfaces from `src/api/types.ts`
 
 **App shell and routing**
-- [ ] Rewrite `frontend/src/main.tsx` — create `QueryClient` instance; wrap `<App />` in `<QueryClientProvider client={queryClient}>` + `<BrowserRouter>`; mount `<Toaster />` from sonner as sibling of `<App />`
-- [ ] Create `frontend/src/App.tsx` — `<Routes>`: `path="/"` → `<Dashboard />`, `path="/products/:id"` → `<ProductDetail />`, `path="/products/:id/alerts"` → `<AlertManager />`; wrap all `<Routes>` in `<Layout>` and `<ErrorBoundary>`
-- [ ] Create `frontend/src/components/Layout.tsx` — top nav: "Price Pulse" brand `<Link to="/">`; right-aligned theme toggle Button (ghost variant, Lucide `<Sun>` / `<Moon>` icon toggled by `colorScheme`); calls Zustand `setColorScheme`; `useEffect` syncs `colorScheme` to `document.documentElement.classList` ('dark' added for dark, removed for light, auto-detects for system); renders `{children}` below nav
-- [ ] Create `frontend/src/components/ErrorBoundary.tsx` — class-based `React.Component<{children}, {hasError, error}>`; `componentDidCatch` logs error; `getDerivedStateFromError` sets `hasError: true`; renders shadcn/ui `Card` with "Something went wrong" heading, `error.message`, and "Try again" `Button` that calls `this.setState({ hasError: false })`
+- [x] Rewrite `frontend/src/main.tsx` — create `QueryClient` instance; wrap `<App />` in `<QueryClientProvider client={queryClient}>` + `<BrowserRouter>`; mount `<Toaster />` from sonner as sibling of `<App />`
+- [x] Create `frontend/src/App.tsx` — `<Routes>`: `path="/"` → `<Dashboard />`, `path="/products/:id"` → `<ProductDetail />`, `path="/products/:id/alerts"` → `<AlertManager />`; wrap all `<Routes>` in `<Layout>` and `<ErrorBoundary>`
+- [x] Create `frontend/src/components/Layout.tsx` — top nav: "Price Pulse" brand `<Link to="/">`; right-aligned theme toggle Button (ghost variant, Lucide `<Sun>` / `<Moon>` icon toggled by `colorScheme`); calls Zustand `setColorScheme`; `useEffect` syncs `colorScheme` to `document.documentElement.classList` ('dark' added for dark, removed for light, auto-detects for system); renders `{children}` below nav
+- [x] Create `frontend/src/components/ErrorBoundary.tsx` — class-based `React.Component<{children}, {hasError, error}>`; `componentDidCatch` logs error; `getDerivedStateFromError` sets `hasError: true`; renders shadcn/ui `Card` with "Something went wrong" heading, `error.message`, and "Try again" `Button` that calls `this.setState({ hasError: false })`
 
 **Zustand store**
-- [ ] Create `frontend/src/store/uiStore.ts` — Zustand store: `selectedProductId: number | null` (init null), `colorScheme: 'light' | 'dark' | 'system'` (init by reading `window.matchMedia('(prefers-color-scheme: dark)')` → default 'system'), `activeProductFilter: boolean | null` (init null), `activeAlertFilter: boolean | null` (init null); actions: `setSelectedProductId`, `setColorScheme`, `setActiveProductFilter`, `setActiveAlertFilter`
+- [x] Create `frontend/src/store/uiStore.ts` — Zustand store: `selectedProductId: number | null` (init null), `colorScheme: 'light' | 'dark' | 'system'` (init by reading `window.matchMedia('(prefers-color-scheme: dark)')` → default 'system'), `activeProductFilter: boolean | null` (init null), `activeAlertFilter: boolean | null` (init null); actions: `setSelectedProductId`, `setColorScheme`, `setActiveProductFilter`, `setActiveAlertFilter`
 
 **Utility functions**
-- [ ] Create `frontend/src/lib/formatPrice.ts` — `export function formatPrice(price: string | number | null | undefined, currency: string): string` — returns `'—'` for null/undefined; otherwise `new Intl.NumberFormat('en-GB', { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(price))`
+- [x] Create `frontend/src/lib/formatPrice.ts` — `export function formatPrice(price: string | number | null | undefined, currency: string): string` — returns `'—'` for null/undefined; otherwise `new Intl.NumberFormat('en-GB', { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(price))`
 
 **React-query hooks**
-- [ ] Create `frontend/src/hooks/useProducts.ts` — `useInfiniteProducts(filter: { isActive?: boolean })`: `useInfiniteQuery` with `queryKey: ['products', filter]`, `queryFn: ({ pageParam }) => productsApi.list({ ...filter, limit: 20, offset: pageParam })`, `initialPageParam: 0`, `getNextPageParam: (last, _, lastOffset) => last.total > lastOffset + 20 ? lastOffset + 20 : undefined`; `useProduct(id: number)`: `useQuery(['product', id], ...)`; `useCreateProduct()`, `useUpdateProduct(id)`, `useDeleteProduct()`: `useMutation` hooks each calling `queryClient.invalidateQueries({ queryKey: ['products'] })` on success
-- [ ] Create `frontend/src/hooks/usePrices.ts` — `usePrices(productId: number, params: { limit?: number; fromDt?: string; toDt?: string })`: `useQuery` with `queryKey: ['prices', productId, params]`, `refetchInterval: 60_000`, calls `pricesApi.list(productId, params)`
-- [ ] Create `frontend/src/hooks/useAlerts.ts` — `useAlerts(productId: number, filter?: { isActive?: boolean })`: `useQuery` with `queryKey: ['alerts', productId, filter]`; `useCreateAlert()`, `useUpdateAlert(id)`, `useDeleteAlert()`: `useMutation` hooks each invalidating `['alerts']` on success
-- [ ] Create `frontend/src/hooks/useScrape.ts` — `useScrapeProduct()`: `useMutation` calling `productsApi.scrape(productId)`, `onSuccess: () => toast('Scrape job queued — price will update shortly')`, `onError: (err) => toast.error(err.detail ?? 'Scrape failed')`; `onSettled`: `queryClient.invalidateQueries({ queryKey: ['prices', productId] })`
+- [x] Create `frontend/src/hooks/useProducts.ts` — `useInfiniteProducts(filter: { isActive?: boolean })`: `useInfiniteQuery` with `queryKey: ['products', filter]`, `queryFn: ({ pageParam }) => productsApi.list({ ...filter, limit: 20, offset: pageParam })`, `initialPageParam: 0`, `getNextPageParam: (last, _, lastOffset) => last.total > lastOffset + 20 ? lastOffset + 20 : undefined`; `useProduct(id: number)`: `useQuery(['product', id], ...)`; `useCreateProduct()`, `useUpdateProduct(id)`, `useDeleteProduct()`: `useMutation` hooks each calling `queryClient.invalidateQueries({ queryKey: ['products'] })` on success
+- [x] Create `frontend/src/hooks/usePrices.ts` — `usePrices(productId: number, params: { limit?: number; fromDt?: string; toDt?: string })`: `useQuery` with `queryKey: ['prices', productId, params]`, `refetchInterval: 60_000`, calls `pricesApi.list(productId, params)`
+- [x] Create `frontend/src/hooks/useAlerts.ts` — `useAlerts(productId: number, filter?: { isActive?: boolean })`: `useQuery` with `queryKey: ['alerts', productId, filter]`; `useCreateAlert()`, `useUpdateAlert(id)`, `useDeleteAlert()`: `useMutation` hooks each invalidating `['alerts']` on success
+- [x] Create `frontend/src/hooks/useScrape.ts` — `useScrapeProduct()`: `useMutation` calling `productsApi.scrape(productId)`, `onSuccess: () => toast('Scrape job queued — price will update shortly')`, `onError: (err) => toast.error(err.detail ?? 'Scrape failed')`; `onSettled`: `queryClient.invalidateQueries({ queryKey: ['prices', productId] })`
 
 **Pages**
-- [ ] Implement `frontend/src/pages/Dashboard.tsx`:
+- [x] Implement `frontend/src/pages/Dashboard.tsx`:
   - `useInfiniteProducts({ isActive: activeProductFilter })` from Zustand; `useInView` sentinel div at list bottom calls `fetchNextPage()` when `inView && hasNextPage`
   - is_active filter: three shadcn/ui Button variants (All / Active / Inactive) writing Zustand `setActiveProductFilter`
   - "Add product" Button → local `dialogOpen` state → `<ProductFormDialog mode="create">`
   - Skeleton: 5 `<Skeleton className="h-16" />` rows while `isLoading`; empty-state `Card` when `pages[0].total === 0`
   - Product rows (shadcn/ui `Table` or `Card` list): name (clickable `<Link>` → `/products/:id`), source type `Badge`, latest price from most recent `PriceRecordRead` via `formatPrice`, active status `Badge`; `DropdownMenu` with Edit (`<ProductFormDialog mode="edit" product={row}>`), Activate/Deactivate (`useUpdateProduct`), Delete (`<ConfirmDialog>`)
 
-- [ ] Implement `frontend/src/pages/ProductDetail.tsx`:
+- [x] Implement `frontend/src/pages/ProductDetail.tsx`:
   - `useParams` for `id`; `useProduct(id)` for metadata; set Zustand `selectedProductId` on mount via `useEffect`
   - Header: product `name` (h1), `url` as `<a target="_blank">`, `source_type` `Badge`, "Scrape Now" `Button` calling `useScrapeProduct` (shows Lucide `<Loader2 className="animate-spin">` and `disabled` while mutating)
   - `<PriceChart productId={id} />` below header
   - Alerts summary `Card` at bottom: `useAlerts(id)` count of `is_active=true` alerts + "Manage alerts" `Button` → `navigate('/products/:id/alerts')`
   - Skeleton layout (card skeleton + chart skeleton) while `isLoading`; 404 `Card` if product not found
 
-- [ ] Implement `frontend/src/pages/AlertManager.tsx`:
+- [x] Implement `frontend/src/pages/AlertManager.tsx`:
   - `useParams` for `id`; `useAlerts(id, { isActive: activeAlertFilter })` from Zustand
   - "← Back to product" `<Link to="/products/:id">` breadcrumb at top
   - is_active filter buttons (same pattern as Dashboard); `activeAlertFilter` from Zustand
@@ -616,7 +616,7 @@ Scaffold and implement the React frontend: product dashboard with infinite-scrol
   - Skeleton rows while `isLoading`
 
 **Components**
-- [ ] Create `frontend/src/components/PriceChart.tsx`:
+- [x] Create `frontend/src/components/PriceChart.tsx`:
   - Props: `productId: number`
   - Local state: `dateRange: { from: Date | undefined; to: Date | undefined }` (init undefined/undefined = load all)
   - `usePrices(productId, { fromDt: dateRange.from ? formatISO(dateRange.from) : undefined, toDt: dateRange.to ? formatISO(dateRange.to) : undefined })`
@@ -624,29 +624,29 @@ Scaffold and implement the React frontend: product dashboard with infinite-scrol
   - Recharts `<ResponsiveContainer width="100%" height={300}>` → `<LineChart data={filteredPoints}>` (filter out null-price points); `<XAxis dataKey="captured_at">` with `tickFormatter` using `date-fns format`; `<YAxis tickFormatter>` using `formatPrice`; `<Tooltip content={<CustomTooltip />}>` showing formatted price + currency + ISO date
   - Skeleton `<Skeleton className="h-64 w-full" />` while loading; empty-state `Card` when no data points
 
-- [ ] Create `frontend/src/components/ProductFormDialog.tsx`:
+- [x] Create `frontend/src/components/ProductFormDialog.tsx`:
   - Props: `mode: 'create' | 'edit'`; `product?: ProductRead`; `open: boolean`; `onOpenChange: (open: boolean) => void`
   - shadcn/ui `Dialog`; `useForm` with `zodResolver`; zod schema: `name: z.string().min(1)`, `url: z.string().url()`, `source_type: z.enum(['generic','amazon','ebay','currys'])`, `css_selector: z.string().optional()`; `css_selector` `FormItem` rendered only when `watch('source_type') === 'generic'`
   - Submit calls `useCreateProduct` or `useUpdateProduct`; `onSuccess`: `toast('Product saved')`, `onOpenChange(false)`, invalidate products query
   - shadcn/ui `Form` + `FormField` + `FormItem` + `FormMessage` for per-field validation feedback
 
-- [ ] Create `frontend/src/components/AlertFormDialog.tsx`:
+- [x] Create `frontend/src/components/AlertFormDialog.tsx`:
   - Props: `productId: number`; `mode: 'create' | 'edit'`; `alert?: AlertRead`; `open: boolean`; `onOpenChange: (open: boolean) => void`
   - shadcn/ui `Dialog`; `useForm` with `zodResolver`; zod schema: `threshold_price: z.coerce.number().positive()`, `direction: z.enum(['above','below'])`, `channel: z.enum(['email','webhook','whatsapp'])`, `webhook_url: z.string().url().optional()`, `whatsapp_number: z.string().regex(/^\+[1-9]\d{7,14}$/).optional()`; `.superRefine()` makes `webhook_url` required when `channel=webhook` and `whatsapp_number` required when `channel=whatsapp`
   - Conditional `FormItem` visibility driven by `watch('channel')`
   - Submit calls `useCreateAlert` or `useUpdateAlert`; `onSuccess`: `toast('Alert saved')`, `onOpenChange(false)`
 
-- [ ] Create `frontend/src/components/ConfirmDialog.tsx`:
+- [x] Create `frontend/src/components/ConfirmDialog.tsx`:
   - Props: `title: string`; `description: string`; `open: boolean`; `onOpenChange: (open: boolean) => void`; `onConfirm: () => void`; `isLoading?: boolean`
   - shadcn/ui `AlertDialog` with `AlertDialogAction` styled as destructive `Button`; shows `<Loader2 className="animate-spin">` when `isLoading`
 
 **MSW test infrastructure**
-- [ ] Create `frontend/tests/mocks/handlers.ts` — MSW v2 `http` handlers for all API endpoints: `GET /api/v1/products` → `PaginatedResponse<ProductRead>` (3 seeded items, total: 3); `POST /api/v1/products` → 201 `ProductRead`; `GET /api/v1/products/:id` → single `ProductRead`; `PATCH /api/v1/products/:id` → 200 `ProductRead`; `DELETE /api/v1/products/:id` → 204; `GET /api/v1/products/:id/prices` → `PaginatedResponse<PriceRecordRead>` (5 seeded records); `POST /api/v1/products/:id/scrape` → 202 `ScrapeJobResponse`; `GET /api/v1/alerts` → `PaginatedResponse<AlertRead>`; `POST /api/v1/alerts` → 201 `AlertRead`; `PATCH /api/v1/alerts/:id` → 200 `AlertRead`; `DELETE /api/v1/alerts/:id` → 204
-- [ ] Create `frontend/tests/mocks/server.ts` — `import { setupServer } from 'msw/node'; export const server = setupServer(...handlers)`
-- [ ] Update `frontend/tests/setup.ts` — add `import { server } from './mocks/server'`; add `beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))`, `afterEach(() => server.resetHandlers())`, `afterAll(() => server.close())`
+- [x] Create `frontend/tests/mocks/handlers.ts` — MSW v2 `http` handlers for all API endpoints: `GET /api/v1/products` → `PaginatedResponse<ProductRead>` (3 seeded items, total: 3); `POST /api/v1/products` → 201 `ProductRead`; `GET /api/v1/products/:id` → single `ProductRead`; `PATCH /api/v1/products/:id` → 200 `ProductRead`; `DELETE /api/v1/products/:id` → 204; `GET /api/v1/products/:id/prices` → `PaginatedResponse<PriceRecordRead>` (5 seeded records); `POST /api/v1/products/:id/scrape` → 202 `ScrapeJobResponse`; `GET /api/v1/alerts` → `PaginatedResponse<AlertRead>`; `POST /api/v1/alerts` → 201 `AlertRead`; `PATCH /api/v1/alerts/:id` → 200 `AlertRead`; `DELETE /api/v1/alerts/:id` → 204
+- [x] Create `frontend/tests/mocks/server.ts` — `import { setupServer } from 'msw/node'; export const server = setupServer(...handlers)`
+- [x] Update `frontend/tests/setup.ts` — add `import { server } from './mocks/server'`; add `beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))`, `afterEach(() => server.resetHandlers())`, `afterAll(() => server.close())`
 
 **Playwright E2E**
-- [ ] Create `frontend/tests/e2e/smoke.spec.ts` — Playwright test: (1) `page.goto('/')` → assert heading "Price Pulse" visible; assert at least one product row rendered; (2) click first product row → assert product name `<h1>` visible; assert Recharts SVG present; assert "Manage alerts" button visible; (3) click "Manage alerts" → assert AlertManager heading visible; assert "Add alert" button visible. Requires `make dev` running (`E2E_BASE_URL=http://localhost:5173` env var)
+- [x] Create `frontend/tests/e2e/smoke.spec.ts` — Playwright test: (1) `page.goto('/')` → assert heading "Price Pulse" visible; assert at least one product row rendered; (2) click first product row → assert product name `<h1>` visible; assert Recharts SVG present; assert "Manage alerts" button visible; (3) click "Manage alerts" → assert AlertManager heading visible; assert "Add alert" button visible. Requires `make dev` running (`E2E_BASE_URL=http://localhost:5173` env var)
 
 ### Test strategy
 
@@ -812,24 +812,85 @@ Write production-grade multi-stage Dockerfiles and finalise compose configuratio
 
 Adapt and install agents from `presentation_helper` for price_pulse SDLC workflows.
 
+**Note**: All eight agent files were created by prior sessions. Item 9 scope is: verify content against the spec, fix any divergences, and complete the new artifacts (architecture doc, profiling skills stub, log dir scaffolding, agent lint target) that were not pre-created.
+
+### Design decisions (resolved)
+
+- **Agent content source**: All eight agent files already exist on disk from prior sessions. Tasks are reframed from "copy and adapt" to "verify content and fix divergences". Rationale: files were created during earlier SDLC sessions; item 9 gates them formally with a lint check.
+- **Architecture doc scope**: `docs/architecture/repository-architecture.md` is expanded from a stub (C1+C2 only) to a full three-level C4 doc: C1 (system context), C2 (container — corrected to Postgres 16), C3 (backend components — API layer, service layer, scraping layer, models, schemas, core). Frontend stays at container level (C2). A `## Module domain-grouping convention` section is required because `module-grouping-reviewer.agent.md` references it by name. Rationale: the module-grouping agent will silently fail to find its reference anchor without this section.
+- **Data model section**: ASCII ER diagram of the four ORM tables (Product, PriceRecord, PriceAlert, NotificationLog) with FK arrows and key field names added to `repository-architecture.md`. Rationale: the data model is the most important orientation aid for new contributors; no external tooling required.
+- **ADR index**: `## Architecture Decision Records` table appended at the bottom of `repository-architecture.md` — columns: ADR, Date, Status, Summary; one row per file in `docs/decisions/`. Rationale: centralises ADR discoverability in the canonical architecture doc without duplicating content.
+- **Postgres version in arch doc**: C2 table corrects `Postgres 15` → `Postgres 16-alpine` (aligned with Item 8 upgrade decision). Rationale: item 9 owns the doc; stale version references cause confusion during capacity planning.
+- **Profiling skills stub**: `.github/skills/profiling/findings.md` created as an empty stub (same header pattern as `plan-review/findings.md`). Both `profiling-reviewer` agents reference this file as their append target. Rationale: pre-creating the file prevents the first profiling run from needing to handle file-creation logic in its output.
+- **Log directory scaffolding**: `make init-logs` target creates the full log tree with `.gitkeep` stubs: `logs/quality/`, `logs/profiling/backend/`, `logs/profiling/tasks/`, `logs/profiling/frontend/`, `logs/profiling/test-timing/`. `make install` calls `make init-logs`. `.gitignore` excludes log data but tracks `.gitkeep` files. Rationale: `make lint-agents` checks ALL referenced paths (including runtime log dirs) — those dirs must exist before the check can pass.
+- **Agent frontmatter validation (`make lint-agents`)**: Validates two things — (1) frontmatter completeness: every `.claude/agents/*.md` has `name`, `description`, and `tools` fields; every `.github/agents/*.agent.md` has a `description` field; (2) referenced paths: all static config/doc paths and runtime log directories referenced in Quick Commands blocks exist on disk. Implemented as a shell script in the Makefile; no external linter dependency. Rationale: frontmatter completeness is required for Claude Code agent discovery; broken path references silently fail the first time an agent is run.
+- **CI integration**: `make lint-agents` runs in a new dedicated `agent-quality` job in `.github/workflows/ci.yml` (separate from the existing `lint` job which covers ruff and eslint). Rationale: a distinct job label makes it clear in CI reports what failed and why; agent validation is not code lint.
+- **Agent pair sync**: For each `.claude/agents/X.md` / `.github/agents/X.agent.md` pair, a manual diff identifies divergences. Acceptable divergences: `.claude` agents have `name:` and `tools:` frontmatter fields that `.github` agents do not (different runner requirements). All other paths, rules, and Quick Commands must match. Intentional divergences documented with an inline comment. Rationale: unintended drift creates inconsistent SDLC behaviour between local Claude Code and GitHub Copilot execution contexts.
+- **Definition of done**: All existing agent files verified against spec; all new tasks completed; `make lint-agents` exits 0 after `make init-logs`. Rationale: a passing lint gate is the only objective, automatable acceptance criterion for a docs-only item.
+- **CHANGELOG entry**: Add `### Added` entry under `## [Unreleased]` at implementation time — SDLC agent suite, C4 architecture doc, agent frontmatter validation. Rationale: agents establish SDLC infrastructure; recording them in CHANGELOG makes the tooling history visible.
+
 ### Tasks
 
-- [ ] Copy and adapt `.claude/agents/quality.md` — adjust paths to `backend/`, `frontend/`, pytest + vitest gates
-- [ ] Copy and adapt `.claude/agents/architecture-maintainer.md` — point at `docs/architecture/repository-architecture.md`
-- [ ] Create `.claude/agents/profiling-reviewer.md` — adapted for backend `pytest-benchmark` + frontend Lighthouse CLI
-- [ ] Copy `.github/agents/plan-review.agent.md` — update test-layer taxonomy to include frontend vitest
-- [ ] Copy `.github/agents/module-grouping-reviewer.agent.md` — scope to `backend/app/` Python flat-file drift
-- [ ] Copy `.github/agents/quality.agent.md` — update gate commands for this stack
-- [ ] Copy `.github/agents/profiling-reviewer.agent.md` — adapt profiling paths for price_pulse layout
-- [ ] Create `.github/skills/plan-review/findings.md` (empty stub with header)
-- [ ] Create `docs/architecture/repository-architecture.md` — initial C4 system/container/component doc
+**Verification of existing agent files**
+- [ ] Verify `.claude/agents/quality.md` — confirm commands reference `backend/`, `frontend/`, `uv run pytest`, `npm run test:coverage`, `config/quality-thresholds.toml`; confirm four gate thresholds (coverage ≥90% backend, ≥80% frontend, CC P95 < 7, MI P5 > 10, Halstead P95 < 500)
+- [ ] Verify `.claude/agents/architecture-maintainer.md` — fix `tests/` → `backend/tests/` and `frontend/tests/` to align with `.github` version; confirm C4 scope matches three levels defined in this item
+- [ ] Verify `.claude/agents/profiling-reviewer.md` — confirm backend log paths (`logs/profiling/backend/`), Celery task hotspot patterns (`scrape_product`), Lighthouse path (`logs/profiling/frontend/`), and findings file path (`.github/skills/profiling/findings.md`) are correct for this stack
+- [ ] Verify `.github/agents/plan-review.agent.md` — confirm frontend test layers (vitest unit, MSW integration) appear in both the Phase 3 rewrite rules and the ambiguity taxonomy; confirm findings log path (`.github/skills/plan-review/findings.md`)
+- [ ] Verify `.github/agents/module-grouping-reviewer.agent.md` — confirm scope is `backend/app/`; confirm the architecture doc reference reads `docs/architecture/repository-architecture.md → ## Module domain-grouping convention` (this section is created in this item)
+- [ ] Verify `.github/agents/quality.agent.md` — confirm all commands match this stack: `uv run pytest -m "not live_api" --cov=app`, `uv run mypy app/ --ignore-missing-imports`, `uv run radon`, `cd frontend && npm run test:coverage`
+- [ ] Verify `.github/agents/profiling-reviewer.agent.md` — confirm all profile log paths, Celery task names, and findings file path (`.github/skills/profiling/findings.md`) are correct; confirm delegation section matches this repo's agent model
+- [ ] Verify `.github/agents/architecture-maintainer.agent.md` — confirm C4 scope matches three levels; confirm directory scope lists `backend/tests/` and `frontend/tests/` explicitly
+- [ ] Sync agent pairs — for each pair (quality, architecture-maintainer, profiling-reviewer): diff `.claude/agents/X.md` against `.github/agents/X.agent.md`; align all paths and rules where no intentional divergence exists; add inline comment for each intentional divergence (acceptable: `name:` + `tools:` frontmatter in `.claude` version; `$ARGUMENTS` + User Input block in `.github` version); confirm no unintended divergence remains
+
+**New artifacts**
+- [ ] Complete `docs/architecture/repository-architecture.md` — rewrite stub into full C4 doc with these sections in order:
+  - `## C1 — System Context`: ASCII diagram showing User → React SPA → FastAPI backend → Postgres + Redis + external retail sites
+  - `## C2 — Container Diagram`: table updated to Postgres `16-alpine`; add `celery-playwright` container (Microsoft Playwright image, `playwright` queue)
+  - `## C3 — Backend Component Diagram`: one paragraph per layer — API layer (`api/v1/`: thin route handlers, no business logic), service layer (`services/`: sole writer to DB — `price_service`, `alert_service`, `notifications`), scraping layer (`scrapers/`: `BaseScraper`, `GenericScraper`, `AmazonScraper`, `registry`, `http_client`, `exceptions`), ORM models (`models/`: `Product`, `PriceRecord`, `PriceAlert`, `NotificationLog`, `enums`), Pydantic schemas (`schemas/`: `Base/Create/Read/Update` per domain + `scraper.py` + `common.py`), core (`core/`: `config`, `database`, `logging`, `exceptions`)
+  - `## Module domain-grouping convention`: naming rules — modules sharing a domain noun and importing each other's types are candidates for subpackage promotion; standalone utilities with high fan-in (> 3 unrelated callers) stay flat; convention enforced by `module-grouping-reviewer.agent.md`
+  - `## Data Model`: ASCII ER diagram showing four tables with FK relationships and key field names (Product → PriceRecord via `product_id`; Product → PriceAlert via `product_id`; PriceAlert → NotificationLog via `alert_id`)
+  - `## Architecture Decision Records`: markdown table with columns ADR | Date | Status | Summary; one row for `docs/decisions/whatsapp-provider.md` (2026-05-26, Accepted)
+- [ ] Create `.github/skills/profiling/findings.md` — stub:
+  ```markdown
+  # Price Pulse — Profiling Findings
+
+  This file logs durable performance findings from the `profiling-reviewer` agent. Entries are appended chronologically.
+
+  ---
+
+  <!-- Entries are appended below by the profiling-reviewer agent -->
+  ```
+- [ ] Add `make init-logs` Makefile target — `mkdir -p logs/quality logs/profiling/backend logs/profiling/tasks logs/profiling/frontend logs/profiling/test-timing && touch logs/quality/.gitkeep logs/profiling/backend/.gitkeep logs/profiling/tasks/.gitkeep logs/profiling/frontend/.gitkeep logs/profiling/test-timing/.gitkeep`; idempotent
+- [ ] Update `make install` to call `make init-logs` as a final step (after `uv sync`, `npm install`, `playwright install chromium`, `pre-commit install`)
+- [ ] Update `.gitignore` — add `logs/**` with `!logs/**/.gitkeep` exception so log data is excluded but `.gitkeep` stubs are tracked
+- [ ] Add `make lint-agents` Makefile target — shell script that: (1) for each `.claude/agents/*.md`, greps YAML frontmatter block (`---` delimiters) for `name:`, `description:`, `tools:` fields; exits 1 with file name and missing field if any are absent; (2) for each `.github/agents/*.agent.md`, greps frontmatter for `description:` field; exits 1 if absent; (3) extracts path tokens from all Quick Commands code blocks in all agent files (lines matching `^[a-z]|cd |logs/|config/|docs/|backend/|frontend/|.github/`); for each extracted path, checks `[ -e "$path" ]` and exits 1 with the missing path and agent file name if absent; exits 0 if all checks pass
+- [ ] Add `agent-quality` job to `.github/workflows/ci.yml` — steps: checkout, `make install`, `make lint-agents`; triggers on pull_request and push to `main`; job does not depend on other jobs (runs in parallel with `lint`, `test-backend`, `test-frontend`)
+
+**CHANGELOG**
+- [ ] Add `### Added` entry to `CHANGELOG.md` under `## [Unreleased]`: SDLC agent suite (`.claude/agents/` × 3: quality, architecture-maintainer, profiling-reviewer; `.github/agents/` × 5: plan-review, module-grouping-reviewer, quality, profiling-reviewer, architecture-maintainer), C4 repository architecture doc (`docs/architecture/repository-architecture.md`) with data model ER diagram and ADR index, agent frontmatter validation (`make lint-agents`) in new CI `agent-quality` job, log directory scaffolding (`make init-logs`)
 
 ### Test strategy
 
-- **Unit**: N/A (agent files are markdown)
-- **Integration**: manually invoke each agent and verify it produces expected output shape
-- **Negative**: N/A
-- **Live E2E**: N/A
+- **Unit**: N/A — agent files are markdown; no unit-testable logic.
+- **Integration** (Arrange-Act-Assert):
+  - `make init-logs` → verify all five `.gitkeep` files exist at expected paths; assert idempotent (run twice, exits 0 both times)
+  - `make lint-agents` (after `make init-logs`) → exits 0; all eight agent frontmatter blocks valid; all referenced paths exist
+- **Negative** (Arrange-Act-Assert):
+  - Remove `name:` from `.claude/agents/quality.md` → `make lint-agents` exits 1; error message names the file and missing field; restore afterwards
+  - Remove `description:` from `.github/agents/quality.agent.md` → `make lint-agents` exits 1; restore afterwards
+  - Add a Quick Commands path reference to a non-existent directory in any agent file → `make lint-agents` exits 1 with the missing path; restore afterwards
+  - Run `make lint-agents` on a fresh checkout before `make install` (no `init-logs` run) → exits 1 on missing `logs/profiling/backend/`; confirms install order requirement
+- **Live E2E**: Manually invoke each agent once with a minimal prompt; verify output matches the `## Expected Output Shape` section in each respective agent file. No automated assertion — human review. Not run in CI.
+
+### Documentation
+
+- `docs/architecture/repository-architecture.md` — rewrite: full C4 doc (C1+C2+C3+module convention+ER+ADR index), Postgres 16, celery-playwright container
+- `.github/skills/profiling/findings.md` — create: empty stub with header
+- `Makefile` — update: add `lint-agents` and `init-logs` targets; add `init-logs` call in `install`
+- `.github/workflows/ci.yml` — update: add `agent-quality` job
+- `.gitignore` — update: add `logs/**` + `!logs/**/.gitkeep` exception
+- `CLAUDE.md` — update: commands table to add `make lint-agents` and `make init-logs`
+- `CHANGELOG.md` — add `### Added` entry at implementation time
 
 ---
 

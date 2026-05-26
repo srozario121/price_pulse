@@ -29,6 +29,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `celery[redis,asyncio]` replaces `celery[redis]` in backend dependencies
 - `live_amazon` pytest marker for Amazon live-scrape tests
 
+### Added (Item 7 — Frontend React Application)
+
+- React SPA scaffold fully implemented with Vite + TypeScript + shadcn/ui (Radix UI primitives + Tailwind CSS)
+- `src/pages/Dashboard`: infinite-scroll product list via `useInfiniteQuery` + IntersectionObserver; is_active filter buttons; per-row DropdownMenu (Edit, Activate/Deactivate, Delete); `ProductFormDialog` and `ConfirmDialog` integration; Skeleton + empty-state
+- `src/pages/ProductDetail`: product header with name, URL, source type Badge, Scrape Now button (202 + sonner toast); `PriceChart` with Recharts `LineChart`; active alert count + "Manage alerts" link
+- `src/pages/AlertManager`: alert table with direction/channel/status Badges; create/edit via `AlertFormDialog`; delete via `ConfirmDialog`; breadcrumb back to product; is_active filter
+- `src/components/PriceChart`: date-range picker (shadcn/ui Popover + Calendar, react-day-picker); filters null-price records; custom Recharts tooltip with formatted price + date; Skeleton + empty-state
+- `src/components/ProductFormDialog`: zod schema validation; conditional `css_selector` field (generic source type only); create/edit modes; sonner toast on success
+- `src/components/AlertFormDialog`: conditional `webhook_url` / `whatsapp_number` fields driven by `watch('channel')`; `superRefine` makes per-channel fields required; create/edit modes
+- `src/components/ConfirmDialog`: shadcn/ui `AlertDialog`; `isLoading` prop shows spinner; destructive action button
+- `src/components/Layout`: sticky top-nav with "Price Pulse" brand link and light/dark theme toggle; `useEffect` syncs Zustand `colorScheme` to `document.documentElement.classList`
+- `src/components/ErrorBoundary`: class-based error boundary wrapping all routes; renders error Card with "Try again" button
+- `src/hooks/useProducts`: `useInfiniteProducts`, `useProduct`, `useCreateProduct`, `useUpdateProduct`, `useDeleteProduct`
+- `src/hooks/usePrices`: `usePrices` with 60s `refetchInterval`
+- `src/hooks/useAlerts`: `useAlerts`, `useCreateAlert`, `useUpdateAlert`, `useDeleteAlert`
+- `src/hooks/useScrape`: `useScrapeProduct` mutation with sonner success/error toasts
+- `src/api/client.ts`: typed axios wrapper with error interceptor normalising to `{detail: string}`; `productsApi`, `pricesApi`, `alertsApi`
+- `src/api/types.ts`: hand-written TypeScript interfaces for all backend entities (`ProductRead`, `PriceRecordRead`, `AlertRead`, `PaginatedResponse<T>`, `ScrapeJobResponse`)
+- `src/store/uiStore.ts`: Zustand store for `selectedProductId`, `colorScheme`, `activeProductFilter`, `activeAlertFilter`
+- `src/lib/formatPrice.ts`: `Intl.NumberFormat` price formatter; returns `'—'` for null/undefined/NaN
+- shadcn/ui component suite: `Button`, `Card`, `Badge`, `Skeleton`, `Input`, `Label`, `Select`, `Dialog`, `DropdownMenu`, `AlertDialog`, `Popover`, `Calendar`, `Form`
+- Tailwind CSS with `darkMode: 'class'`; full CSS variable palette (light + dark) in `globals.css`
+- `tests/mocks/handlers.ts` + `tests/mocks/server.ts`: MSW v2 handlers for all API endpoints
+- vitest setup: jsdom Pointer Events polyfills for Radix UI compatibility; MSW server lifecycle hooks
+- Unit tests: `formatPrice` (7 cases), `uiStore` (5 cases), `ConfirmDialog` (3), `ProductFormDialog` (2), `AlertFormDialog` (3) — 22 tests total, all passing
+- `frontend/playwright.config.ts` and `tests/e2e/smoke.spec.ts`: Playwright smoke test (Dashboard → ProductDetail → AlertManager)
+- `make test-e2e` and `make generate-types` Makefile targets added
+- `npx playwright install chromium` added to `make install`
+
 ### Added (Item 6 — REST API Endpoints)
 
 - `app.api.v1.products`: full product CRUD (`POST/GET/PATCH/DELETE /api/v1/products`); duplicate-URL 409 guard; `?is_active` filter; `created_at DESC` ordering; max page size 100

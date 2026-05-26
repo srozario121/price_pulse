@@ -277,3 +277,30 @@ Added WhatsApp as a third notification channel alongside email and webhook. Prov
 **Tasks removed/changed**: 1 — "Verify `make up` brings the full stack to healthy state within 60 seconds" replaced by the scripted `make smoke` target and CI `smoke` job
 **Documentation changes**: `docker/backend.Dockerfile` (update — builder COPY + curl); `docker/celery-playwright.Dockerfile` (update — pool flag); `docker/nginx.conf` (update — security headers); `docker-compose.yml` (update — pool fix, postgres 16, resource limits); `.env.example` (update — CORS_ORIGINS); `Makefile` (update — 4 new targets); `.github/workflows/ci.yml` (update — smoke job); `CLAUDE.md` (update — commands table + env table + architecture); `CHANGELOG.md` (update at implementation time)
 **Key design constraint**: `backend.Dockerfile` must copy the root `pyproject.toml` and `uv.lock` into the builder stage and use `uv sync --frozen --no-dev` — without the lockfile, Docker builds install unpinned dependency versions and diverge from the development environment silently. This is the most structurally significant correctness fix in item 8.
+
+---
+
+## TODO item 9 — Claude Code Agents (2026-05-26)
+
+**Ambiguities found**: 13
+
+| Category | Finding | Resolution |
+|---|---|---|
+| Scope gaps | All eight agent files already exist on disk from prior sessions; TODO.md still listed them as "copy and adapt" — creating a false impression of zero progress | Tasks reframed from "copy/create" to "verify content against spec + fix divergences"; definition of done requires `make lint-agents` to pass |
+| Scope gaps | `docs/architecture/repository-architecture.md` marked as stub with C1+C2 only; module-grouping agent references a `## Module domain-grouping convention` section that does not exist | Task expanded: full C3 backend component view + module convention section + ER diagram + ADR index table |
+| Scope gaps | `.github/skills/profiling/findings.md` does not exist; both profiling agents reference it as their append target | New task: create stub with standard header pattern before first profiling run |
+| Scope gaps | No log directory scaffolding task; `make lint-agents` checks ALL referenced paths including runtime log dirs (`logs/profiling/`, `logs/quality/`) | New `make init-logs` target creates full tree with `.gitkeep` files; called from `make install`; `.gitignore` updated |
+| Scope gaps | No agent frontmatter validation or referenced-path lint task | New `make lint-agents` target: frontmatter completeness + ALL path references (static + runtime); runs in CI `agent-quality` job |
+| Model/data design | `docs/architecture/repository-architecture.md` stub has `Postgres 15` hardcoded; Item 8 upgraded to Postgres 16 | Fix in Item 9 (item owns the doc); C2 table corrected to `postgres:16-alpine` |
+| Scope gaps | No data model section in architecture doc; contributors need table relationship orientation | ASCII ER diagram (four tables + FK arrows + key fields) added to `repository-architecture.md` |
+| Scope gaps | No ADR index in architecture doc; `docs/decisions/whatsapp-provider.md` exists but is not discoverable | `## Architecture Decision Records` markdown table appended to `repository-architecture.md`; one row per ADR in `docs/decisions/` |
+| Integration wiring | `.claude/agents/architecture-maintainer.md` references `tests/` generically while `.github` version explicitly lists `backend/tests/` + `frontend/tests/` — unintended divergence | Sync task added: manual diff per agent pair; fix `.claude` version to match; document intentional divergences with inline comments |
+| Test coverage | Test strategy was "manually invoke and check output shape" (integration only); user requested lint/schema checks | Integration: `make lint-agents` exits 0; Negative: missing frontmatter field / broken path / missing log dir each cause exit 1; Live E2E: manual output shape check retained |
+| Documentation | No `CHANGELOG.md` entry task for Item 9 | Task added: `### Added` entry covering all SDLC agents, arch doc, lint target, log scaffolding |
+| Definition of done | Vague ("manually invoke") — no objective acceptance criterion | Done = all verification tasks complete + `make lint-agents` exits 0 |
+| Scope gaps | No CI job for agent lint — user requested Makefile + CI | New `agent-quality` CI job (separate from existing `lint` job); runs `make lint-agents` on every PR and push to main |
+
+**Tasks added**: 9 — complete `repository-architecture.md` (C3+module convention+ER+ADR index); fix Postgres version in C2; create `.github/skills/profiling/findings.md` stub; `make init-logs` target; `make install` update to call `init-logs`; `.gitignore` update; `make lint-agents` target; `agent-quality` CI job; CHANGELOG entry
+**Tasks removed/changed**: 9 — all original "copy/create" tasks converted to "verify content and fix divergences" tasks (files already exist); agent pair sync task added
+**Documentation changes**: `docs/architecture/repository-architecture.md` (rewrite — full C4); `.github/skills/profiling/findings.md` (create — stub); `Makefile` (update — 2 new targets + install update); `.github/workflows/ci.yml` (update — agent-quality job); `.gitignore` (update — logs exclusion); `CLAUDE.md` (update — commands table); `CHANGELOG.md` (update at implementation time)
+**Key design constraint**: `make lint-agents` checks ALL referenced paths including runtime log dirs — log directories must be pre-created by `make init-logs` (called from `make install`) before the lint can pass. This install-order dependency must be documented in `CLAUDE.md` and enforced in the CI job via the install step.

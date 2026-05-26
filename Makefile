@@ -36,6 +36,7 @@ install:        ## Install all deps: uv sync (workspace) + npm install + pre-com
 	uv sync
 	cd backend && uv run playwright install chromium
 	cd frontend && npm install
+	cd frontend && npx playwright install chromium
 	cd / && npm install --prefix $(CURDIR)
 	pre-commit install --hook-type commit-msg --hook-type pre-commit
 
@@ -81,6 +82,14 @@ test-backend:   ## Run backend pytest suite
 .PHONY: test-frontend
 test-frontend:  ## Run frontend vitest suite (single run)
 	cd frontend && npm run test:run
+
+.PHONY: test-e2e
+test-e2e:       ## Run Playwright E2E tests (requires make dev running; E2E_BASE_URL=http://localhost:5173)
+	cd frontend && npx playwright test
+
+.PHONY: generate-types
+generate-types: ## Generate TypeScript types from backend/openapi.json
+	cd frontend && npm run generate-types
 
 # ---------------------------------------------------------------------------
 # Linting & formatting
