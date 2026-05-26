@@ -55,8 +55,9 @@ up:             ## Start production-like stack (detached)
 	docker compose up -d $(SERVICE)
 
 .PHONY: down
-down:           ## Stop and remove containers (preserves volumes)
+down:           ## Stop and remove containers and prune dangling images (preserves volumes)
 	docker compose down $(SERVICE)
+	docker image prune -f
 
 .PHONY: logs
 logs:           ## Tail logs; pass SERVICE=<name> to filter, e.g. make logs SERVICE=backend

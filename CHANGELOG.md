@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `make down` now runs `docker image prune -f` after `docker compose down`, automatically removing dangling images left behind by rebuilds
+
+
+
 ### Added (Item 8 — Docker Containerisation)
 
 - `docker/backend.Dockerfile` production-grade multi-stage build: builder stage now copies root `pyproject.toml` + `uv.lock*` before `backend/pyproject.toml` so `uv sync --frozen --no-dev` resolves the full locked dependency tree; production stage installs `curl` (required for the `HEALTHCHECK CMD`) via `apt-get`
