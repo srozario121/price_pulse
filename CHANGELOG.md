@@ -28,6 +28,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `playwright>=1.44` and `parsel>=1.9` added to backend runtime dependencies
 - `celery[redis,asyncio]` replaces `celery[redis]` in backend dependencies
 - `live_amazon` pytest marker for Amazon live-scrape tests
+
+### Added (Item 5 — Celery Task Infrastructure)
+
+- `app.workers.celery_app`: Celery application factory with asyncio pool, RedBeat scheduler, task time limits (120s soft / 150s hard), and queue routing
+- `app.tasks.scrape.scrape_product`: async bound task; fetches product, dispatches to `'playwright'` queue for Amazon, retries with exponential back-off (1s/2s/4s, max 3)
+- `app.tasks.schedule`: `register_product_schedule`, `deregister_product_schedule`, `startup_sync_schedules` (worker_ready signal); RedBeat-backed per-product intervals
+- `app.tasks.notify.send_notification`: async bound task; email stub (INFO log), real webhook via httpx, WhatsApp stub (WARNING log, pending provider ADR); creates `NotificationLog` row with final status
+- `celery-redbeat>=0.13` added to runtime dependencies; `fakeredis>=2.0` added to dev dependencies
+- `CELERY_RESULT_BACKEND` and `ALERT_COOLDOWN_HOURS` added to `app.core.config.Settings`
+- `ALERT_COOLDOWN_HOURS=24` added to `.env.example`
+- `NotificationChannel.whatsapp` enum value added; `PriceAlert.channel`, `webhook_url`, `whatsapp_number` columns added
+- Alembic migration 0005 (`add_alert_channel_whatsapp`): extends `notification_channel_enum` with `'whatsapp'`, adds three columns to `price_alert`
+- `make worker` and `make beat` Makefile targets updated to use `--pool=asyncio` and `--scheduler redbeat.RedBeatScheduler`
+- `docker-compose.yml` and `docker-compose.dev.yml` celery-beat commands updated to use `redbeat.RedBeatScheduler` (replaces incompatible `django_celery_beat.schedulers:DatabaseScheduler`)
+- `docs/decisions/whatsapp-provider.md`: WhatsApp provider spike ADR (Twilio recommended; implementation deferred pending ADR approval)
 - Unit tests for enums, scrapers, http_client, price_service, alert_service, notifications
 - Integration tests for price_service and alert_service against Postgres testcontainer
 

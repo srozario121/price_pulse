@@ -19,6 +19,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "playwright>=1.44",
     "parsel>=1.9",
+    "celery-redbeat>=0.13",
 ]
 
 [dependency-groups]
@@ -32,6 +33,7 @@ dev = [
     "mypy>=1.10",
     "radon>=6.0",
     "testcontainers[postgres]>=4.0",
+    "fakeredis>=2.0",
 ]
 
 [tool.pytest.ini_options]

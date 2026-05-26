@@ -331,37 +331,37 @@ Configure Celery with Redis broker/backend, scheduled periodic scraping via `cel
 ### Tasks
 
 **Dependencies and configuration**
-- [ ] Add `celery-redbeat>=0.13` to `backend/pyproject.toml` runtime dependencies (no WhatsApp provider SDK until spike ADR is approved)
-- [ ] Add `CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"` to `Settings` in `backend/app/core/config.py`
-- [ ] Add `ALERT_COOLDOWN_HOURS: int = 24` to `Settings` in `backend/app/core/config.py`
-- [ ] Update `.env.example`: add `ALERT_COOLDOWN_HOURS=24` (note: `CELERY_RESULT_BACKEND` already present; no WhatsApp provider vars until spike ADR is approved)
-- [ ] Update `backend/app/services/alert_service.py`: replace hardcoded `timedelta(hours=24)` with `timedelta(hours=settings.ALERT_COOLDOWN_HOURS)`
+- [x] Add `celery-redbeat>=0.13` to `backend/pyproject.toml` runtime dependencies (no WhatsApp provider SDK until spike ADR is approved)
+- [x] Add `CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"` to `Settings` in `backend/app/core/config.py`
+- [x] Add `ALERT_COOLDOWN_HOURS: int = 24` to `Settings` in `backend/app/core/config.py`
+- [x] Update `.env.example`: add `ALERT_COOLDOWN_HOURS=24` (note: `CELERY_RESULT_BACKEND` already present; no WhatsApp provider vars until spike ADR is approved)
+- [x] Update `backend/app/services/alert_service.py`: replace hardcoded `timedelta(hours=24)` with `timedelta(hours=settings.ALERT_COOLDOWN_HOURS)`
 
 **Model and schema amendments (cross-item)**
-- [ ] Add `whatsapp = 'whatsapp'` to `NotificationChannel(str, enum.Enum)` in `backend/app/models/notification_log.py`
-- [ ] Add `channel` (`notification_channel_enum`, NOT NULL, default `'email'`), `webhook_url` (`VARCHAR(512)`, nullable), and `whatsapp_number` (`VARCHAR(20)`, nullable, E.164) columns to `PriceAlert` model in `backend/app/models/alert.py`
-- [ ] Update `backend/app/schemas/alert.py`: add `channel: NotificationChannel = NotificationChannel.email`, `webhook_url: str | None = None`, and `whatsapp_number: str | None = None` to `AlertBase`; propagates to `AlertCreate`, `AlertRead`, `AlertUpdate`
-- [ ] Generate Alembic migration: `alembic revision --autogenerate -m "add_alert_channel_whatsapp"`; verify the generated file includes: `ALTER TYPE notification_channel_enum ADD VALUE 'whatsapp'` (before the table alteration); adds `channel notification_channel_enum NOT NULL DEFAULT 'email'`, `webhook_url VARCHAR(512) NULL`, and `whatsapp_number VARCHAR(20) NULL` columns to `price_alert` table. Note: autogenerate does not emit `ALTER TYPE … ADD VALUE` automatically — add it manually in `upgrade()` before `op.add_column()` calls
+- [x] Add `whatsapp = 'whatsapp'` to `NotificationChannel(str, enum.Enum)` in `backend/app/models/notification_log.py`
+- [x] Add `channel` (`notification_channel_enum`, NOT NULL, default `'email'`), `webhook_url` (`VARCHAR(512)`, nullable), and `whatsapp_number` (`VARCHAR(20)`, nullable, E.164) columns to `PriceAlert` model in `backend/app/models/alert.py`
+- [x] Update `backend/app/schemas/alert.py`: add `channel: NotificationChannel = NotificationChannel.email`, `webhook_url: str | None = None`, and `whatsapp_number: str | None = None` to `AlertBase`; propagates to `AlertCreate`, `AlertRead`, `AlertUpdate`
+- [x] Generate Alembic migration: `alembic revision --autogenerate -m "add_alert_channel_whatsapp"`; verify the generated file includes: `ALTER TYPE notification_channel_enum ADD VALUE 'whatsapp'` (before the table alteration); adds `channel notification_channel_enum NOT NULL DEFAULT 'email'`, `webhook_url VARCHAR(512) NULL`, and `whatsapp_number VARCHAR(20) NULL` columns to `price_alert` table. Note: autogenerate does not emit `ALTER TYPE … ADD VALUE` automatically — add it manually in `upgrade()` before `op.add_column()` calls
 
 **Celery application factory**
-- [ ] Implement `backend/app/workers/celery_app.py` — create `Celery` app with: `broker=settings.CELERY_BROKER_URL`, `backend=settings.CELERY_RESULT_BACKEND`, `worker_pool='celery.concurrency.aio:TaskPool'`, `task_soft_time_limit=120`, `task_time_limit=150`, `task_routes={'app.tasks.scrape.scrape_product': {'queue': 'default'}, 'app.tasks.notify.send_notification': {'queue': 'default'}}` (Amazon queue override applied at dispatch time, not in static routes), `redbeat_redis_url=settings.REDIS_URL`; call `app.autodiscover_tasks(['app.tasks'])`
+- [x] Implement `backend/app/workers/celery_app.py` — create `Celery` app with: `broker=settings.CELERY_BROKER_URL`, `backend=settings.CELERY_RESULT_BACKEND`, `worker_pool='celery.concurrency.aio:TaskPool'`, `task_soft_time_limit=120`, `task_time_limit=150`, `task_routes={'app.tasks.scrape.scrape_product': {'queue': 'default'}, 'app.tasks.notify.send_notification': {'queue': 'default'}}` (Amazon queue override applied at dispatch time, not in static routes), `redbeat_redis_url=settings.REDIS_URL`; call `app.autodiscover_tasks(['app.tasks'])`
 
 **Tasks**
-- [ ] Implement `backend/app/tasks/scrape.py` — `async def scrape_product(self, product_id: int)` bound task (`bind=True`): open `AsyncSessionLocal`, fetch `Product`, call `registry.get_scraper(product.source_type).fetch(product.url)`, call `price_service.record_price(product_id, result, session)`; dispatch to `'playwright'` queue if `source_type == SourceType.AMAZON`; on exception call `self.retry(countdown=2 ** self.request.retries, max_retries=3)`; on exhaustion log structlog ERROR with full exception
-- [ ] Implement `backend/app/tasks/schedule.py` — `register_product_schedule(product_id: int, interval_minutes: int) -> None`: creates or updates a `RedBeatSchedulerEntry` for `scrape_product` with `run_every=timedelta(minutes=interval_minutes)`, key `f"scrape:{product_id}"`; `deregister_product_schedule(product_id: int) -> None`: deletes the redbeat key; `startup_sync_schedules() -> None`: queries all `is_active=True` products from DB and calls `register_product_schedule` for each — called at worker startup via the Celery `worker_ready` signal
-- [ ] Implement `backend/app/tasks/notify.py` — `async def send_notification(self, alert_id: int)` bound task: open `AsyncSessionLocal`, fetch `PriceAlert` with product and latest `PriceRecord`; build payload `{"product_id", "product_name", "product_url", "current_price", "threshold_price", "direction"}`; create `NotificationLog(alert_id=..., channel=alert.channel, payload=payload, status='pending')`; dispatch based on `alert.channel`: `email` → structlog INFO stub + set `status='sent'`; `webhook` → `httpx.AsyncClient().post(alert.webhook_url, json=payload, timeout=10.0)` + set `status='sent'`/`'failed'`; `whatsapp` → structlog WARNING stub (`{"event": "whatsapp_stub", "alert_id": ..., "whatsapp_number": ...}`) + set `status='sent'` (provider wired in follow-on item after spike ADR); on any exception call `self.retry(countdown=5, max_retries=3)`; on exhaustion set `NotificationLog.status='failed'`, log structlog ERROR
-- [ ] Update `backend/app/services/notifications.py` — replace `notify_alert` stub body with `from app.tasks.notify import send_notification; send_notification.delay(alert_id)` (preserving the function signature so `alert_service.py` import is unchanged)
+- [x] Implement `backend/app/tasks/scrape.py` — `async def scrape_product(self, product_id: int)` bound task (`bind=True`): open `AsyncSessionLocal`, fetch `Product`, call `registry.get_scraper(product.source_type).fetch(product.url)`, call `price_service.record_price(product_id, result, session)`; dispatch to `'playwright'` queue if `source_type == SourceType.AMAZON`; on exception call `self.retry(countdown=2 ** self.request.retries, max_retries=3)`; on exhaustion log structlog ERROR with full exception
+- [x] Implement `backend/app/tasks/schedule.py` — `register_product_schedule(product_id: int, interval_minutes: int) -> None`: creates or updates a `RedBeatSchedulerEntry` for `scrape_product` with `run_every=timedelta(minutes=interval_minutes)`, key `f"scrape:{product_id}"`; `deregister_product_schedule(product_id: int) -> None`: deletes the redbeat key; `startup_sync_schedules() -> None`: queries all `is_active=True` products from DB and calls `register_product_schedule` for each — called at worker startup via the Celery `worker_ready` signal
+- [x] Implement `backend/app/tasks/notify.py` — `async def send_notification(self, alert_id: int)` bound task: open `AsyncSessionLocal`, fetch `PriceAlert` with product and latest `PriceRecord`; build payload `{"product_id", "product_name", "product_url", "current_price", "threshold_price", "direction"}`; create `NotificationLog(alert_id=..., channel=alert.channel, payload=payload, status='pending')`; dispatch based on `alert.channel`: `email` → structlog INFO stub + set `status='sent'`; `webhook` → `httpx.AsyncClient().post(alert.webhook_url, json=payload, timeout=10.0)` + set `status='sent'`/`'failed'`; `whatsapp` → structlog WARNING stub (`{"event": "whatsapp_stub", "alert_id": ..., "whatsapp_number": ...}`) + set `status='sent'` (provider wired in follow-on item after spike ADR); on any exception call `self.retry(countdown=5, max_retries=3)`; on exhaustion set `NotificationLog.status='failed'`, log structlog ERROR
+- [x] Update `backend/app/services/notifications.py` — replace `notify_alert` stub body with `from app.tasks.notify import send_notification; send_notification.delay(alert_id)` (preserving the function signature so `alert_service.py` import is unchanged)
 
 **WhatsApp provider spike**
-- [ ] Spike: evaluate WhatsApp delivery providers — compare **Meta WhatsApp Business Cloud API** (direct, no intermediary), **Twilio**, **Vonage**, and **MessageBird/Bird** across: sandbox/test number availability, Python SDK maturity and async support, per-message pricing at low volume, rate limits, webhook vs polling for delivery receipts, and setup complexity. Document findings and the chosen provider in a new ADR at `docs/decisions/whatsapp-provider.md`. Outcome feeds a follow-on task (add to backlog once ADR is approved) that replaces the `whatsapp_stub` with real delivery.
+- [x] Spike: evaluate WhatsApp delivery providers — compare **Meta WhatsApp Business Cloud API** (direct, no intermediary), **Twilio**, **Vonage**, and **MessageBird/Bird** across: sandbox/test number availability, Python SDK maturity and async support, per-message pricing at low volume, rate limits, webhook vs polling for delivery receipts, and setup complexity. Document findings and the chosen provider in a new ADR at `docs/decisions/whatsapp-provider.md`. Outcome feeds a follow-on task (add to backlog once ADR is approved) that replaces the `whatsapp_stub` with real delivery.
 
 **Docker**
-- [ ] Update `docker-compose.yml` celery-beat `command`: replace `django_celery_beat.schedulers:DatabaseScheduler` argument with `--scheduler redbeat.RedBeatScheduler`
-- [ ] Update `docker-compose.dev.yml` celery-beat `command`: add `--scheduler redbeat.RedBeatScheduler`
+- [x] Update `docker-compose.yml` celery-beat `command`: replace `django_celery_beat.schedulers:DatabaseScheduler` argument with `--scheduler redbeat.RedBeatScheduler`
+- [x] Update `docker-compose.dev.yml` celery-beat `command`: add `--scheduler redbeat.RedBeatScheduler`
 
 **Makefile**
-- [ ] Add `make worker` target: `cd backend && uv run celery -A app.workers.celery_app worker --pool=asyncio --loglevel=debug`
-- [ ] Add `make beat` target: `cd backend && uv run celery -A app.workers.celery_app beat --scheduler redbeat.RedBeatScheduler --loglevel=debug`
+- [x] Add `make worker` target: `cd backend && uv run celery -A app.workers.celery_app worker --pool=asyncio --loglevel=debug`
+- [x] Add `make beat` target: `cd backend && uv run celery -A app.workers.celery_app beat --scheduler redbeat.RedBeatScheduler --loglevel=debug`
 
 ### Test strategy
 
@@ -528,27 +528,192 @@ Expose all domain operations via a versioned FastAPI router (`/api/v1`).
 
 ## 7. Frontend — React Application
 
-Scaffold and implement the React frontend: product dashboard, price history charts, alert management, and real-time update polling.
+Scaffold and implement the React frontend: product dashboard with infinite-scroll product list, price history charts with date-range filtering, alert management, and real-time update polling.
+
+**Depends on**: Item 6 (REST API Endpoints) for `backend/openapi.json` used by `make generate-types`. Item 7 uses placeholder hand-written types during development; run `make generate-types` once item 6 is complete.
+
+### Design decisions (resolved)
+
+- **Component library**: shadcn/ui (Radix UI primitives + Tailwind CSS). Rationale: accessible unstyled primitives with Tailwind variants; standard with Vite + React stacks; no CSS-in-JS overhead.
+- **TypeScript API types**: Generated from `backend/openapi.json` via `openapi-typescript` (`make generate-types`). During item 7 development, hand-write placeholder types in `src/api/types.ts`. Rationale: types stay in sync with the backend contract automatically after item 6 lands.
+- **Live E2E layer**: Playwright (`@playwright/test`) smoke tests in `frontend/tests/e2e/`; navigate Dashboard → ProductDetail → AlertManager against running `make dev` stack. `make test-e2e` target added to Makefile. `npx playwright install chromium` added to `make install`. Rationale: all four test layers required; Playwright has native TypeScript support.
+- **Date range filter on PriceChart**: shadcn/ui Popover + Calendar (react-day-picker `mode="range"`) for custom from/to range; `date-fns` for formatting/arithmetic. Rationale: richer UX than preset-only buttons; shadcn/ui Calendar available from installed primitives.
+- **Dashboard pagination**: Infinite scroll via `useInfiniteQuery` + IntersectionObserver (`react-intersection-observer` `useInView` hook). Sentinel div at list bottom triggers `fetchNextPage()`. Page size: 20. Rationale: react-query `useInfiniteQuery` handles offset cursor natively; no scroll library required.
+- **Form library**: `react-hook-form` + `zod` + `@hookform/resolvers`. Conditional fields (`webhook_url` shown only when `channel=webhook`; `whatsapp_number` only when `channel=whatsapp`) driven by `watch('channel')`. Rationale: standard with shadcn/ui Form components; Zod validates conditional required fields at schema level.
+- **Shared Layout**: `src/components/Layout.tsx` — top nav with "Price Pulse" brand link and a theme toggle Button (ghost variant, Lucide Sun/Moon icon). Wraps all routes. Rationale: consistent navigation; no sidebar overhead at this scale.
+- **Scrape Now UX**: ProductDetail header "Scrape Now" button calls `POST /products/{id}/scrape`. `sonner` toast confirms "Scrape job queued" on 202. Existing 60s `usePrices` `refetchInterval` surfaces the new PriceRecord. Rationale: no websocket or manual status polling needed at a 30-minute scrape cadence.
+- **API client pattern**: Single axios instance in `src/api/client.ts`; `baseURL: import.meta.env.VITE_API_URL ?? ''`; error interceptor normalises all API errors to `{detail: string}`; typed resource groups: `productsApi`, `pricesApi`, `alertsApi`. Rationale: centralised transport layer; swappable without touching hooks.
+- **MSW handler location**: `frontend/tests/mocks/handlers.ts` + `tests/mocks/server.ts`. Imported in `tests/setup.ts` so every vitest test gets the server automatically. Rationale: mock code co-located with tests, not app source.
+- **Zustand store scope**: `selectedProductId: number | null`, `colorScheme: 'light' | 'dark' | 'system'`, `activeProductFilter: boolean | null`, `activeAlertFilter: boolean | null`. React-query owns all server state; Zustand holds UI-only state. Rationale: minimal Zustand footprint; no server cache duplication.
+- **Dark mode**: Tailwind `darkMode: 'class'`. Zustand `colorScheme` drives a `useEffect` toggling `document.documentElement.classList`. System default reads `window.matchMedia('(prefers-color-scheme: dark)')` on init. Rationale: shadcn/ui dark variants work transparently with the Tailwind class strategy.
+- **Toast library**: `sonner`. `<Toaster />` mounted in `App.tsx`. Rationale: shadcn/ui docs recommend sonner over the built-in Toast component; simpler API.
+- **Price formatting**: `formatPrice(price: string | number, currency: string) → string` in `src/lib/formatPrice.ts` using `Intl.NumberFormat('en-GB', { style: 'currency', currency })`. Returns `'—'` for null/undefined. Rationale: ISO-correct; supports GBP/USD/EUR without a symbol lookup table.
+- **Product management actions**: Kebab DropdownMenu on each Dashboard row — Edit (opens `ProductFormDialog` in edit mode), Activate/Deactivate (calls `useUpdateProduct`), Delete (opens `ConfirmDialog`). Rationale: all mutations accessible from Dashboard without leaving the list.
+- **Loading states**: shadcn/ui `Skeleton` components — skeleton rows in Dashboard list, skeleton chart area in ProductDetail. Rationale: better perceived performance than a spinner; shapes match expected layout.
+- **Error boundary**: Single global `<ErrorBoundary>` wrapping `<Routes>` in `App.tsx`. Renders a Card with "Something went wrong", error detail, and "Try again" Button (`setState({ hasError: false })`). Rationale: prevents full blank-screen on any render crash.
+- **shadcn/ui setup files**: Explicit tasks for `src/globals.css` (CSS variable tokens + `@tailwind` directives), `src/lib/utils.ts` (`cn()` = clsx + tailwind-merge), `tsconfig.app.json` path alias (`@/*` → `./src/*`), `vite.config.ts` path alias. These are prerequisites for all shadcn/ui components. Rationale: `npx shadcn-ui@latest init` generates them but tasks ensure they are committed and documented.
+- **ProductDetail layout**: Header (name, URL, source type Badge, Scrape Now button) → PriceChart → Alerts summary Card (count + "Manage alerts" → `/products/:id/alerts`). Single-column vertical flow. Rationale: no tab switching required to see the chart.
+- **AlertManager routing**: `/products/:id/alerts` sub-route. Pre-filters `GET /alerts?product_id=:id`. "Back to product" breadcrumb link. Rationale: contextual — alert management is always in the context of one product.
+- **Alert create/edit UI**: shadcn/ui Dialog launched from "Add alert" button or row edit button. Conditional fields rendered via `watch('channel')`. Rationale: consistent with ProductFormDialog pattern; no page navigation required for CRUD.
 
 ### Tasks
 
-- [ ] Initialise `frontend/` with Vite + React + TypeScript; add `vitest`, `@testing-library/react`, `msw` (mock service worker), `tailwindcss`, `recharts` (price charts), `react-query` (server state)
-- [ ] `frontend/src/api/client.ts` — typed Axios/fetch wrapper for `/api/v1`; handle 4xx/5xx with typed errors
-- [ ] `frontend/src/pages/Dashboard.tsx` — product list with latest price and alert status badges
-- [ ] `frontend/src/pages/ProductDetail.tsx` — price history chart (Recharts `LineChart`) + alert list
-- [ ] `frontend/src/pages/AlertManager.tsx` — create/edit/delete alerts; threshold input with currency formatting
-- [ ] `frontend/src/components/PriceChart.tsx` — reusable line chart component; supports date-range filtering
-- [ ] `frontend/src/hooks/useProducts.ts`, `usePrices.ts`, `useAlerts.ts` — react-query hooks with stale-while-revalidate
-- [ ] `frontend/src/store/` — Zustand store for global UI state (selected product, filter state)
-- [ ] Add polling for real-time price updates (`refetchInterval: 60_000`)
-- [ ] Implement responsive layout with Tailwind; support light/dark mode via `prefers-color-scheme`
+**Package and tooling setup**
+- [ ] Update `frontend/package.json` runtime deps: add `tailwindcss`, `postcss`, `autoprefixer`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `tailwindcss-animate`, `sonner`, `react-hook-form`, `@hookform/resolvers`, `zod`, `react-day-picker`, `date-fns`, `react-intersection-observer`
+- [ ] Update `frontend/package.json` devDeps: add `openapi-typescript`, `@playwright/test`; add script `"generate-types": "npx openapi-typescript ../backend/openapi.json -o src/api/types.ts"`
+- [ ] Run `npx shadcn-ui@latest init` — select TypeScript, CSS variables, `tailwind.config.ts`, `src/globals.css`, `@/` import alias; verify `darkMode: 'class'` in `tailwind.config.ts` and `content: ['./src/**/*.{ts,tsx}']`
+- [ ] Install shadcn/ui components via CLI: `npx shadcn-ui@latest add button card dialog dropdown-menu input label select skeleton table badge form popover calendar alert-dialog`
+- [ ] Update `tsconfig.app.json`: add `"paths": {"@/*": ["./src/*"]}` to `compilerOptions`; update `"include"` to `["src", "tests"]`
+- [ ] Update `vite.config.ts`: add `import path from 'path'`; add `resolve: { alias: { "@": path.resolve(__dirname, "./src") } }` to `defineConfig`
+- [ ] Create `frontend/playwright.config.ts`: `baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173'`; `testDir: './tests/e2e'`; `use: { headless: true }`; screenshot on failure
+- [ ] Update `Makefile` `install` target: add `cd frontend && npx playwright install chromium` after `cd frontend && npm install`
+- [ ] Add `make test-e2e` Makefile target: `cd frontend && npx playwright test`
+
+**TypeScript types and API client**
+- [ ] Create `frontend/src/api/types.ts` — hand-write placeholder TypeScript interfaces: `ProductRead`, `ProductCreate`, `ProductUpdate`, `PriceRecordRead`, `AlertRead`, `AlertCreate`, `AlertUpdate`, `PaginatedResponse<T>` (items, total, limit, offset), `ScrapeJobResponse` (task_id, status, product); add comment `// Run make generate-types to replace with generated types after item 6 is complete`
+- [ ] Create `frontend/src/api/client.ts` — axios instance `baseURL: import.meta.env.VITE_API_URL ?? ''`; response error interceptor extracting `{detail: string}` from 4xx/5xx; `productsApi`: `list(params)`, `get(id)`, `create(data)`, `update(id, data)`, `remove(id)`, `scrape(id)`; `pricesApi`: `list(productId, params)`; `alertsApi`: `list(params)`, `get(id)`, `create(data)`, `update(id, data)`, `remove(id)` — all typed with interfaces from `src/api/types.ts`
+
+**App shell and routing**
+- [ ] Rewrite `frontend/src/main.tsx` — create `QueryClient` instance; wrap `<App />` in `<QueryClientProvider client={queryClient}>` + `<BrowserRouter>`; mount `<Toaster />` from sonner as sibling of `<App />`
+- [ ] Create `frontend/src/App.tsx` — `<Routes>`: `path="/"` → `<Dashboard />`, `path="/products/:id"` → `<ProductDetail />`, `path="/products/:id/alerts"` → `<AlertManager />`; wrap all `<Routes>` in `<Layout>` and `<ErrorBoundary>`
+- [ ] Create `frontend/src/components/Layout.tsx` — top nav: "Price Pulse" brand `<Link to="/">`; right-aligned theme toggle Button (ghost variant, Lucide `<Sun>` / `<Moon>` icon toggled by `colorScheme`); calls Zustand `setColorScheme`; `useEffect` syncs `colorScheme` to `document.documentElement.classList` ('dark' added for dark, removed for light, auto-detects for system); renders `{children}` below nav
+- [ ] Create `frontend/src/components/ErrorBoundary.tsx` — class-based `React.Component<{children}, {hasError, error}>`; `componentDidCatch` logs error; `getDerivedStateFromError` sets `hasError: true`; renders shadcn/ui `Card` with "Something went wrong" heading, `error.message`, and "Try again" `Button` that calls `this.setState({ hasError: false })`
+
+**Zustand store**
+- [ ] Create `frontend/src/store/uiStore.ts` — Zustand store: `selectedProductId: number | null` (init null), `colorScheme: 'light' | 'dark' | 'system'` (init by reading `window.matchMedia('(prefers-color-scheme: dark)')` → default 'system'), `activeProductFilter: boolean | null` (init null), `activeAlertFilter: boolean | null` (init null); actions: `setSelectedProductId`, `setColorScheme`, `setActiveProductFilter`, `setActiveAlertFilter`
+
+**Utility functions**
+- [ ] Create `frontend/src/lib/formatPrice.ts` — `export function formatPrice(price: string | number | null | undefined, currency: string): string` — returns `'—'` for null/undefined; otherwise `new Intl.NumberFormat('en-GB', { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(price))`
+
+**React-query hooks**
+- [ ] Create `frontend/src/hooks/useProducts.ts` — `useInfiniteProducts(filter: { isActive?: boolean })`: `useInfiniteQuery` with `queryKey: ['products', filter]`, `queryFn: ({ pageParam }) => productsApi.list({ ...filter, limit: 20, offset: pageParam })`, `initialPageParam: 0`, `getNextPageParam: (last, _, lastOffset) => last.total > lastOffset + 20 ? lastOffset + 20 : undefined`; `useProduct(id: number)`: `useQuery(['product', id], ...)`; `useCreateProduct()`, `useUpdateProduct(id)`, `useDeleteProduct()`: `useMutation` hooks each calling `queryClient.invalidateQueries({ queryKey: ['products'] })` on success
+- [ ] Create `frontend/src/hooks/usePrices.ts` — `usePrices(productId: number, params: { limit?: number; fromDt?: string; toDt?: string })`: `useQuery` with `queryKey: ['prices', productId, params]`, `refetchInterval: 60_000`, calls `pricesApi.list(productId, params)`
+- [ ] Create `frontend/src/hooks/useAlerts.ts` — `useAlerts(productId: number, filter?: { isActive?: boolean })`: `useQuery` with `queryKey: ['alerts', productId, filter]`; `useCreateAlert()`, `useUpdateAlert(id)`, `useDeleteAlert()`: `useMutation` hooks each invalidating `['alerts']` on success
+- [ ] Create `frontend/src/hooks/useScrape.ts` — `useScrapeProduct()`: `useMutation` calling `productsApi.scrape(productId)`, `onSuccess: () => toast('Scrape job queued — price will update shortly')`, `onError: (err) => toast.error(err.detail ?? 'Scrape failed')`; `onSettled`: `queryClient.invalidateQueries({ queryKey: ['prices', productId] })`
+
+**Pages**
+- [ ] Implement `frontend/src/pages/Dashboard.tsx`:
+  - `useInfiniteProducts({ isActive: activeProductFilter })` from Zustand; `useInView` sentinel div at list bottom calls `fetchNextPage()` when `inView && hasNextPage`
+  - is_active filter: three shadcn/ui Button variants (All / Active / Inactive) writing Zustand `setActiveProductFilter`
+  - "Add product" Button → local `dialogOpen` state → `<ProductFormDialog mode="create">`
+  - Skeleton: 5 `<Skeleton className="h-16" />` rows while `isLoading`; empty-state `Card` when `pages[0].total === 0`
+  - Product rows (shadcn/ui `Table` or `Card` list): name (clickable `<Link>` → `/products/:id`), source type `Badge`, latest price from most recent `PriceRecordRead` via `formatPrice`, active status `Badge`; `DropdownMenu` with Edit (`<ProductFormDialog mode="edit" product={row}>`), Activate/Deactivate (`useUpdateProduct`), Delete (`<ConfirmDialog>`)
+
+- [ ] Implement `frontend/src/pages/ProductDetail.tsx`:
+  - `useParams` for `id`; `useProduct(id)` for metadata; set Zustand `selectedProductId` on mount via `useEffect`
+  - Header: product `name` (h1), `url` as `<a target="_blank">`, `source_type` `Badge`, "Scrape Now" `Button` calling `useScrapeProduct` (shows Lucide `<Loader2 className="animate-spin">` and `disabled` while mutating)
+  - `<PriceChart productId={id} />` below header
+  - Alerts summary `Card` at bottom: `useAlerts(id)` count of `is_active=true` alerts + "Manage alerts" `Button` → `navigate('/products/:id/alerts')`
+  - Skeleton layout (card skeleton + chart skeleton) while `isLoading`; 404 `Card` if product not found
+
+- [ ] Implement `frontend/src/pages/AlertManager.tsx`:
+  - `useParams` for `id`; `useAlerts(id, { isActive: activeAlertFilter })` from Zustand
+  - "← Back to product" `<Link to="/products/:id">` breadcrumb at top
+  - is_active filter buttons (same pattern as Dashboard); `activeAlertFilter` from Zustand
+  - "Add alert" `Button` → local `dialogOpen` + `<AlertFormDialog mode="create" productId={id}>`
+  - `Table` rows: threshold `formatPrice`, direction `Badge` (above = green, below = red), channel `Badge`, active status `Badge`, `notified_at` formatted datetime; row Edit `Button` → `<AlertFormDialog mode="edit" alert={row}>`; Delete `Button` → `<ConfirmDialog>`
+  - Empty state `Card` when no alerts
+  - Skeleton rows while `isLoading`
+
+**Components**
+- [ ] Create `frontend/src/components/PriceChart.tsx`:
+  - Props: `productId: number`
+  - Local state: `dateRange: { from: Date | undefined; to: Date | undefined }` (init undefined/undefined = load all)
+  - `usePrices(productId, { fromDt: dateRange.from ? formatISO(dateRange.from) : undefined, toDt: dateRange.to ? formatISO(dateRange.to) : undefined })`
+  - Date range picker: shadcn/ui `Popover` + `Calendar` with `mode="range"` updating `dateRange` state; "Clear" button resets to all-time
+  - Recharts `<ResponsiveContainer width="100%" height={300}>` → `<LineChart data={filteredPoints}>` (filter out null-price points); `<XAxis dataKey="captured_at">` with `tickFormatter` using `date-fns format`; `<YAxis tickFormatter>` using `formatPrice`; `<Tooltip content={<CustomTooltip />}>` showing formatted price + currency + ISO date
+  - Skeleton `<Skeleton className="h-64 w-full" />` while loading; empty-state `Card` when no data points
+
+- [ ] Create `frontend/src/components/ProductFormDialog.tsx`:
+  - Props: `mode: 'create' | 'edit'`; `product?: ProductRead`; `open: boolean`; `onOpenChange: (open: boolean) => void`
+  - shadcn/ui `Dialog`; `useForm` with `zodResolver`; zod schema: `name: z.string().min(1)`, `url: z.string().url()`, `source_type: z.enum(['generic','amazon','ebay','currys'])`, `css_selector: z.string().optional()`; `css_selector` `FormItem` rendered only when `watch('source_type') === 'generic'`
+  - Submit calls `useCreateProduct` or `useUpdateProduct`; `onSuccess`: `toast('Product saved')`, `onOpenChange(false)`, invalidate products query
+  - shadcn/ui `Form` + `FormField` + `FormItem` + `FormMessage` for per-field validation feedback
+
+- [ ] Create `frontend/src/components/AlertFormDialog.tsx`:
+  - Props: `productId: number`; `mode: 'create' | 'edit'`; `alert?: AlertRead`; `open: boolean`; `onOpenChange: (open: boolean) => void`
+  - shadcn/ui `Dialog`; `useForm` with `zodResolver`; zod schema: `threshold_price: z.coerce.number().positive()`, `direction: z.enum(['above','below'])`, `channel: z.enum(['email','webhook','whatsapp'])`, `webhook_url: z.string().url().optional()`, `whatsapp_number: z.string().regex(/^\+[1-9]\d{7,14}$/).optional()`; `.superRefine()` makes `webhook_url` required when `channel=webhook` and `whatsapp_number` required when `channel=whatsapp`
+  - Conditional `FormItem` visibility driven by `watch('channel')`
+  - Submit calls `useCreateAlert` or `useUpdateAlert`; `onSuccess`: `toast('Alert saved')`, `onOpenChange(false)`
+
+- [ ] Create `frontend/src/components/ConfirmDialog.tsx`:
+  - Props: `title: string`; `description: string`; `open: boolean`; `onOpenChange: (open: boolean) => void`; `onConfirm: () => void`; `isLoading?: boolean`
+  - shadcn/ui `AlertDialog` with `AlertDialogAction` styled as destructive `Button`; shows `<Loader2 className="animate-spin">` when `isLoading`
+
+**MSW test infrastructure**
+- [ ] Create `frontend/tests/mocks/handlers.ts` — MSW v2 `http` handlers for all API endpoints: `GET /api/v1/products` → `PaginatedResponse<ProductRead>` (3 seeded items, total: 3); `POST /api/v1/products` → 201 `ProductRead`; `GET /api/v1/products/:id` → single `ProductRead`; `PATCH /api/v1/products/:id` → 200 `ProductRead`; `DELETE /api/v1/products/:id` → 204; `GET /api/v1/products/:id/prices` → `PaginatedResponse<PriceRecordRead>` (5 seeded records); `POST /api/v1/products/:id/scrape` → 202 `ScrapeJobResponse`; `GET /api/v1/alerts` → `PaginatedResponse<AlertRead>`; `POST /api/v1/alerts` → 201 `AlertRead`; `PATCH /api/v1/alerts/:id` → 200 `AlertRead`; `DELETE /api/v1/alerts/:id` → 204
+- [ ] Create `frontend/tests/mocks/server.ts` — `import { setupServer } from 'msw/node'; export const server = setupServer(...handlers)`
+- [ ] Update `frontend/tests/setup.ts` — add `import { server } from './mocks/server'`; add `beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))`, `afterEach(() => server.resetHandlers())`, `afterAll(() => server.close())`
+
+**Playwright E2E**
+- [ ] Create `frontend/tests/e2e/smoke.spec.ts` — Playwright test: (1) `page.goto('/')` → assert heading "Price Pulse" visible; assert at least one product row rendered; (2) click first product row → assert product name `<h1>` visible; assert Recharts SVG present; assert "Manage alerts" button visible; (3) click "Manage alerts" → assert AlertManager heading visible; assert "Add alert" button visible. Requires `make dev` running (`E2E_BASE_URL=http://localhost:5173` env var)
 
 ### Test strategy
 
-- **Unit**: `PriceChart` renders with mock data; API client formats requests correctly; Zustand store mutations
-- **Integration**: `Dashboard` fetches and displays product list (MSW mock); `ProductDetail` renders chart with seeded data
-- **Negative**: API returns 500 → error boundary displayed; empty product list → empty-state component shown
-- **Live E2E**: not required (frontend-only; covered by integration tests with MSW)
+- **Unit** (isolated, no network — Arrange-Act-Assert):
+  - `formatPrice`: `formatPrice(9.99, 'GBP')` → `'£9.99'`; `formatPrice(null, 'USD')` → `'—'`; `formatPrice(1234.5, 'EUR')` → `'€1,234.50'`
+  - `api/client.ts`: axios instance `baseURL` equals `VITE_API_URL`; error interceptor extracts `detail` from 422 response body; 404 response → rejects with `{detail: 'Not Found'}`
+  - `uiStore.ts`: `setColorScheme('dark')` updates store; `setActiveProductFilter(true)` updates store; `setSelectedProductId(42)` updates store
+  - `PriceChart.tsx`: renders with 5 seeded `PriceRecordRead` fixtures → Recharts SVG present in DOM; renders empty-state `Card` when data is empty array; `CustomTooltip` formats price via `formatPrice`
+  - `AlertFormDialog.tsx`: `channel=webhook`, empty `webhook_url` → form submission blocked, validation error shown; `channel=whatsapp`, invalid number format → `FormMessage` shown; `channel=email` → `webhook_url` and `whatsapp_number` fields not in DOM
+  - `ProductFormDialog.tsx`: invalid `url` field → `FormMessage` shown; `source_type=amazon` → `css_selector` field not rendered
+  - `ConfirmDialog.tsx`: renders `title` and `description`; `isLoading=true` → action button shows spinner and is disabled
+
+- **Integration** (MSW mock server via `tests/mocks/server.ts` — Arrange-Act-Assert):
+  - `Dashboard`: renders with MSW `GET /api/v1/products` handler; assert 3 product rows visible; assert formatted price `'£9.99'` in first row; assert Skeleton not rendered after data loads
+  - `Dashboard` infinite scroll: MSW returns `total: 40`; IntersectionObserver fires → `fetchNextPage` called; assert page 2 products append to list
+  - `Dashboard` empty state: MSW returns `total: 0, items: []`; assert empty-state `Card` rendered
+  - `Dashboard` "Add product" modal: click "Add product" → `Dialog` opens; fill form; submit → MSW `POST /api/v1/products` returns 201 → `Dialog` closes; product list refetches
+  - `Dashboard` delete: click kebab menu → Delete → `ConfirmDialog` → confirm → MSW `DELETE /api/v1/products/:id` 204 → list refetches
+  - `ProductDetail`: renders product header; `<PriceChart>` receives 5 seeded price records; "Manage alerts" button navigates to `/products/:id/alerts`
+  - `ProductDetail` Scrape Now: click "Scrape Now" → MSW `POST /api/v1/products/:id/scrape` 202 → sonner toast "Scrape job queued" appears
+  - `AlertManager`: renders 2 seeded alerts; "Add alert" modal; submit → MSW `POST /api/v1/alerts` 201 → list refetches; delete flow matches Dashboard pattern
+
+- **Negative** (Arrange-Act-Assert):
+  - API returns 500 on `GET /api/v1/products` → `<ErrorBoundary>` "Something went wrong" Card rendered (use `server.use(http.get(..., () => HttpResponse.error()))` override)
+  - `GET /api/v1/products/:id` returns 404 → `ProductDetail` 404 Card rendered, not `<ErrorBoundary>`
+  - `PriceChart` with all null prices (extraction_failed records) → empty-state Card rendered, Recharts SVG absent
+  - `AlertFormDialog` submitted with `channel=webhook` and blank `webhook_url` → form does not submit; `FormMessage` visible
+  - `ProductFormDialog` submitted with invalid URL → form does not submit; `FormMessage` visible
+  - `useScrapeProduct` on inactive product → API returns 400 → `toast.error` displayed; Scrape Now button re-enabled
+  - `formatPrice` with non-numeric string → returns `'—'` without throwing
+
+- **Live E2E** (`@playwright/test` — requires `make dev` running; `E2E_BASE_URL=http://localhost:5173`):
+  - `frontend/tests/e2e/smoke.spec.ts`: navigate to `/`; assert "Price Pulse" heading visible; click first product row; assert product name `<h1>` visible; assert Recharts SVG present; click "Manage alerts"; assert AlertManager heading visible; assert "Add alert" button visible
+
+### Documentation
+
+- **`frontend/package.json`** — update: add all new runtime and dev deps; add `generate-types` script
+- **`frontend/playwright.config.ts`** — create
+- **`frontend/tailwind.config.ts`** — create (via `npx shadcn-ui@latest init`)
+- **`frontend/src/globals.css`** — create: shadcn/ui CSS variable tokens + `@tailwind` directives
+- **`frontend/src/lib/utils.ts`** — create: `cn()` helper (clsx + tailwind-merge) (via shadcn init)
+- **`frontend/src/lib/formatPrice.ts`** — create
+- **`frontend/src/api/types.ts`** — create: placeholder types (replaced by `make generate-types`)
+- **`frontend/src/api/client.ts`** — create
+- **`frontend/src/main.tsx`** — update: rewrite from placeholder to full entrypoint
+- **`frontend/src/App.tsx`** — create
+- **`frontend/src/store/uiStore.ts`** — create
+- **`frontend/src/components/Layout.tsx`** — create
+- **`frontend/src/components/ErrorBoundary.tsx`** — create
+- **`frontend/src/components/PriceChart.tsx`** — create
+- **`frontend/src/components/ProductFormDialog.tsx`** — create
+- **`frontend/src/components/AlertFormDialog.tsx`** — create
+- **`frontend/src/components/ConfirmDialog.tsx`** — create
+- **`frontend/src/pages/Dashboard.tsx`** — create
+- **`frontend/src/pages/ProductDetail.tsx`** — create
+- **`frontend/src/pages/AlertManager.tsx`** — create
+- **`frontend/src/hooks/useProducts.ts`** — create
+- **`frontend/src/hooks/usePrices.ts`** — create
+- **`frontend/src/hooks/useAlerts.ts`** — create
+- **`frontend/src/hooks/useScrape.ts`** — create
+- **`frontend/tests/mocks/handlers.ts`** — create
+- **`frontend/tests/mocks/server.ts`** — create
+- **`frontend/tests/setup.ts`** — update: add MSW server lifecycle
+- **`frontend/tests/e2e/smoke.spec.ts`** — create
+- **`Makefile`** — update: add `test-e2e` target; update `install` to include `npx playwright install chromium`
+- **`CLAUDE.md`** — update: commands table to add `make test-e2e` and `make generate-types`; frontend architecture section to document shadcn/ui, Zustand store shape, routing structure, MSW handler location
+- **`CHANGELOG.md`** — add `### Added` entry under `## [Unreleased]` at implementation time: React SPA (shadcn/ui, react-query infinite scroll, PriceChart with date range, AlertManager with conditional notification fields, Playwright E2E)
 
 ---
 
@@ -556,22 +721,90 @@ Scaffold and implement the React frontend: product dashboard, price history char
 
 Write production-grade multi-stage Dockerfiles and finalise compose configuration.
 
+**Depends on**: Items 4–7 (all application code must be complete before the Docker layer is finalised). Item 8 does not add application code — it corrects scaffold stubs produced in earlier items and wires the full production compose.
+
+### Design decisions (resolved)
+
+- **TLS strategy**: Upstream-only. Nginx serves plain HTTP internally on port 80; TLS is terminated at an upstream load balancer or CDN (AWS ALB, Cloudflare, etc.). `nginx.conf` has no `ssl_certificate` blocks. Rationale: TLS termination at the app layer requires cert lifecycle management that belongs in the deployment layer, not the container image.
+- **Resource limits**: Concrete `deploy.resources.limits` blocks in `docker-compose.yml` for all services — `backend`: `memory: 512m, cpus: "0.50"`; `celery-worker`: `memory: 512m, cpus: "1.00"`; `celery-beat`: `memory: 256m, cpus: "0.25"`; `celery-playwright`: `memory: 1g, cpus: "1.00"` (Chromium requires 800–900 MB); `postgres`: `memory: 512m, cpus: "0.50"`; `redis`: `memory: 128m, cpus: "0.25"`; `frontend` (Nginx): `memory: 128m, cpus: "0.25"`. Rationale: values derived from expected workloads at a 30-minute scraping cadence; tune after load testing.
+- **Healthcheck tool**: `curl` installed in the `production` stage of `backend.Dockerfile` via `apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*`. Rationale: `python:3.12-slim` does not include `curl`; the existing `HEALTHCHECK CMD curl -f http://localhost:8000/health || exit 1` would silently fail without it.
+- **uv lockfile in builder**: `backend.Dockerfile` builder stage must `COPY pyproject.toml uv.lock* ./` (root workspace files) before `COPY backend/pyproject.toml backend/` so that `uv sync --frozen --no-dev` can resolve the locked dependency tree. The original scaffold only copies `backend/pyproject.toml`, which causes uv to install unpinned latest versions. Rationale: reproducible builds require the lockfile; `--frozen` flags a stale lockfile at build time rather than silently degrading.
+- **Celery pool fix**: Item 5 decided `asyncio` pool for all Celery workers. The scaffold stubs use `--concurrency=4` (pre-fork) for `celery-worker` and `--pool=gevent` for `celery-playwright`. Both must be corrected to `--pool=asyncio` in `docker-compose.yml` and `docker/celery-playwright.Dockerfile`. Rationale: pre-fork pool with async tasks causes deadlocks; gevent is incompatible with the `celery.concurrency.aio:TaskPool` decision from item 5.
+- **Worker image strategy**: One backend image; `celery-worker` and `celery-beat` services override the CMD in `docker-compose.yml` rather than adding new Dockerfile stages. Rationale: minimises image count; the override pattern is already used in `docker-compose.dev.yml`.
+- **CORS_ORIGINS in production**: Add `CORS_ORIGINS=http://localhost` to `.env.example` with a comment that it must be set to the real frontend origin in production. `Settings` raises `ValueError` when `DEBUG=false` and `CORS_ORIGINS` is empty, making a fresh stack unbootable without this var. Rationale: the existing `.env.example` has no `CORS_ORIGINS` entry; `make up` on a fresh checkout would fail at FastAPI startup.
+- **Postgres version**: Upgrade `docker-compose.yml` postgres image from `postgres:15-alpine` to `postgres:16-alpine` to match the `testcontainers[postgres]` version used in integration tests. Rationale: dialect consistency between test and production prevents subtle query-plan divergences.
+- **Nginx security headers**: Add `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `X-XSS-Protection: 0` to `docker/nginx.conf`. These do not require HTTPS. Rationale: baseline browser security posture at zero deployment cost.
+- **Unit test layer**: Two separate `make` targets — `make lint-docker` (hadolint on all four Dockerfiles; fail on ERROR or WARN level findings) and `make validate-nginx` (`docker run --rm -v $(pwd)/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro nginx:1.27-alpine nginx -t`; fails if config is invalid). Rationale: these catch structural Dockerfile anti-patterns and config syntax errors without requiring a running stack.
+- **Stack smoke test**: `make smoke` target replaces the vague "verify within 60 seconds" task. Script: `docker compose up -d`, poll `GET http://localhost:8000/health` every 5 s (max 12 attempts = 60 s), assert 200; `curl -sf http://localhost/nginx-health`; `docker compose down`. Rationale: scriptable and CI-reproducible.
+- **CI smoke job**: New `smoke` job in `.github/workflows/ci.yml` that runs after `build`: `docker compose up -d`, wait for health via polling script, assert, `docker compose down`. Rationale: catches compose wiring regressions that `docker build` alone cannot detect.
+- **Image scanning**: New `make scan` target using `aquasec/trivy` Docker image — `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL price-pulse-backend:latest price-pulse-frontend:latest`. Run in CI after the `build` job (separate step or job). Fails the build on any CRITICAL CVE. Rationale: trivy requires no host install, runs via Docker; scanning at build time catches known CVEs before images reach any registry.
+- **celery-playwright CMD path verification**: Add an explicit task to verify the `celery-playwright` container starts correctly (`docker compose run --rm celery-playwright celery -A app.workers.celery_app inspect ping`) after the pool and WORKDIR fixes are applied. Rationale: the WORKDIR, Python path, and CMD interact in non-obvious ways between the Microsoft Playwright base image and the uv workspace layout.
+
 ### Tasks
 
-- [ ] `docker/backend.Dockerfile` — multi-stage: builder (uv install) + slim runtime; non-root user; health-check
-- [ ] `docker/frontend.Dockerfile` — multi-stage: Node build + Nginx static serve; Nginx config with SPA fallback
-- [ ] `docker/nginx.conf` — reverse-proxy `/api` to backend; serve frontend static files; gzip compression
-- [ ] Finalise `docker-compose.yml` with named volumes, `depends_on` health-checks, resource limits
-- [ ] Finalise `docker-compose.dev.yml` overrides: volume mounts for hot-reload, Flower on port 5555, pgAdmin on port 5050
-- [ ] Add `make build` (builds all images), `make up` (compose up -d), `make down`, `make logs SERVICE=...` targets
-- [ ] Verify `make up` brings the full stack to healthy state within 60 seconds
+**Dockerfile fixes (correctness — scaffold stubs)**
+- [ ] Fix `docker/backend.Dockerfile` builder stage: add `COPY pyproject.toml uv.lock* ./` before `COPY backend/pyproject.toml backend/`; change `RUN uv sync --no-dev` to `RUN uv sync --frozen --no-dev`
+- [ ] Fix `docker/backend.Dockerfile` production stage: add `RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*` after the non-root user creation so the `HEALTHCHECK CMD curl -f http://localhost:8000/health` does not silently fail
+- [ ] Fix `docker/celery-playwright.Dockerfile` CMD: change `--pool=gevent` to `--pool=asyncio`; verify WORKDIR and Python path are consistent with the backend image entry-point
+
+**docker-compose.yml finalisation**
+- [ ] Correct `celery-worker` service command: change `--concurrency=4` to `--pool=asyncio` (e.g. `celery -A app.workers.celery_app worker --pool=asyncio --loglevel=info`)
+- [ ] Correct `celery-playwright` service command: add `--pool=asyncio` (remove any `--concurrency` or `--pool=gevent` reference)
+- [ ] Upgrade postgres image: change `postgres:15-alpine` to `postgres:16-alpine`
+- [ ] Add `deploy.resources.limits` blocks to all seven services: `backend` (512m / 0.50 CPU), `celery-worker` (512m / 1.00), `celery-beat` (256m / 0.25), `celery-playwright` (1g / 1.00), `postgres` (512m / 0.50), `redis` (128m / 0.25), `frontend` (128m / 0.25)
+
+**Nginx security hardening**
+- [ ] Add security headers to `docker/nginx.conf` `server {}` block: `add_header X-Frame-Options "SAMEORIGIN" always;`, `add_header X-Content-Type-Options "nosniff" always;`, `add_header Referrer-Policy "strict-origin-when-cross-origin" always;`, `add_header X-XSS-Protection "0" always;`
+
+**Environment and configuration**
+- [ ] Add `CORS_ORIGINS=http://localhost` to `.env.example` under the `# Backend — Application` section with comment: `# Required in production (DEBUG=false); comma-separated list of allowed origins`
+
+**Make targets (new)**
+- [ ] Add `make lint-docker` target: `docker run --rm -i hadolint/hadolint < docker/backend.Dockerfile && docker run --rm -i hadolint/hadolint < docker/frontend.Dockerfile && docker run --rm -i hadolint/hadolint < docker/celery-playwright.Dockerfile`; fails on any ERROR or WARN finding
+- [ ] Add `make validate-nginx` target: `docker run --rm -v $(shell pwd)/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro nginx:1.27-alpine nginx -t`; asserts exit 0
+- [ ] Add `make scan` target: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL price-pulse-backend:latest price-pulse-frontend:latest`; fails on any CRITICAL CVE
+- [ ] Add `make smoke` target: `docker compose up -d`; poll `GET http://localhost:8000/health` every 5 s (12 attempts max); assert 200; `curl -sf http://localhost/nginx-health`; `docker compose down`; exits 1 on timeout or bad status
+- [ ] Verify `make lint-docker` passes against all four Dockerfiles after fixes; verify `make validate-nginx` passes against updated `nginx.conf`
+
+**Make targets (already exist — verify and document)**
+- [ ] Verify `make build` (builds all images), `make up` (compose up -d), `make down`, `make logs SERVICE=...` behave correctly with the corrected compose; update `CLAUDE.md` commands table if descriptions differ
+
+**CI update**
+- [ ] Add `smoke` job to `.github/workflows/ci.yml`: runs after `build` job; steps: `docker compose up -d` → polling health-check script (curl loop, max 60 s) → `curl -sf http://localhost/nginx-health` → assert frontend → `docker compose down`; fails PR if stack does not reach healthy state within the timeout
+
+**Playwright service verification**
+- [ ] After pool and path fixes, verify `celery-playwright` starts correctly: `docker compose run --rm celery-playwright celery -A app.workers.celery_app inspect ping`; confirm worker responds and Chromium path is resolved
 
 ### Test strategy
 
-- **Unit**: N/A
-- **Integration**: `make up` smoke test — `GET /health` returns 200; frontend serves `index.html`
-- **Negative**: backend crashes on bad DB URL → exits with non-zero; missing Redis → worker fails fast with log message
-- **Live E2E**: not required
+- **Unit** (no running containers):
+  - `make lint-docker` — run hadolint against `backend.Dockerfile`, `frontend.Dockerfile`, `celery-playwright.Dockerfile`; assert zero ERROR/WARN findings; lint failure blocks CI `smoke` job
+  - `make validate-nginx` — run `nginx -t` via Docker against `docker/nginx.conf`; assert exit 0; catches syntax errors before deployment
+
+- **Integration** (requires `docker compose build` first — Arrange-Act-Assert):
+  - `make smoke` — `docker compose up -d` → poll `GET http://localhost:8000/health` until 200 (5 s intervals, 12 attempts) → `curl -sf http://localhost/nginx-health` → assert 200 → `docker compose down`
+  - Frontend index: `curl -sf http://localhost/` → assert `<div id="root">` present (SPA shell served correctly)
+  - API proxy: `curl -sf http://localhost/api/v1/` → assert not 502 (Nginx correctly forwarding to backend)
+
+- **Negative** (Arrange-Act-Assert):
+  - Backend with invalid `DATABASE_URL` (e.g. `postgresql+asyncpg://bad@nonexistent/nodb`): start container with override → assert container exits non-zero within 30 s (lifespan startup raises)
+  - `celery-worker` with unreachable Redis (`CELERY_BROKER_URL=redis://nonexistent:6379/0`): start isolated container → assert structlog CRITICAL/ERROR emitted and process exits non-zero (no silent hang)
+  - `docker compose up` with missing `.env`: compose should emit a clear error about required variables (`SECRET_KEY`, `CORS_ORIGINS`) rather than silently starting with wrong values; assert exit 1 from compose
+  - `make validate-nginx` with a deliberately broken nginx.conf (e.g. missing semicolon): assert exit non-zero
+
+- **Live E2E**: Not required. The `make smoke` integration test covers full-stack healthy-state verification against the real Docker Compose stack. The CI `smoke` job promotes this to a gated PR check.
+
+### Documentation
+
+- **`docker/backend.Dockerfile`** — update: fix builder COPY sequence + `uv sync --frozen --no-dev`; add `curl` install in production stage
+- **`docker/celery-playwright.Dockerfile`** — update: change `--pool=gevent` to `--pool=asyncio`
+- **`docker/nginx.conf`** — update: add four security headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `X-XSS-Protection`)
+- **`docker-compose.yml`** — update: `celery-worker` command `--pool=asyncio`; `celery-playwright` command `--pool=asyncio`; postgres `16-alpine`; `deploy.resources.limits` for all seven services
+- **`.env.example`** — update: add `CORS_ORIGINS=http://localhost` with inline comment
+- **`Makefile`** — update: add `lint-docker`, `validate-nginx`, `scan`, and `smoke` targets with help descriptions
+- **`.github/workflows/ci.yml`** — update: add `smoke` job that depends on `build`
+- **`CLAUDE.md`** — update: commands table (add `make lint-docker`, `make validate-nginx`, `make scan`, `make smoke`); environment variables table (add `CORS_ORIGINS` row); architecture section note on resource limits
+- **`CHANGELOG.md`** — add `### Added` entry under `## [Unreleased]` at implementation time: production Docker images (multi-stage backend + frontend), Nginx security headers, compose resource limits, hadolint + trivy quality gates, CI smoke job
 
 ---
 

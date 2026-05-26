@@ -7,14 +7,13 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.alert import PriceAlert
 from app.models.enums import ExtractionStatus
 from app.models.price_history import PriceRecord
 from app.services import notifications
 
 logger = structlog.get_logger()
-
-_ALERT_COOLDOWN_HOURS = 24  # promoted to settings in Item 5
 
 
 async def evaluate_alerts(product_id: int, session: AsyncSession) -> None:
@@ -59,7 +58,7 @@ async def evaluate_alerts(product_id: int, session: AsyncSession) -> None:
     alerts = alerts_result.scalars().all()
 
     now = datetime.now(tz=UTC)
-    cooldown_delta = timedelta(hours=_ALERT_COOLDOWN_HOURS)
+    cooldown_delta = timedelta(hours=settings.ALERT_COOLDOWN_HOURS)
 
     for alert in alerts:
         # 24h cooldown check

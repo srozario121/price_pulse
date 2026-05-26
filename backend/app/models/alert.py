@@ -6,13 +6,13 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, Numeric
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.notification_log import NotificationLog
+    from app.models.notification_log import NotificationLog, NotificationChannel
     from app.models.product import Product
 
 
@@ -40,6 +40,14 @@ class PriceAlert(Base):
         Boolean, default=True, server_default="true", nullable=False
     )
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Notification delivery fields (added in Item 5)
+    channel: Mapped[str] = mapped_column(
+        Enum("email", "webhook", "whatsapp", name="notification_channel_enum", native_enum=True),
+        nullable=False,
+        server_default="email",
+    )
+    webhook_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    whatsapp_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     product: Mapped[Product] = relationship("Product", back_populates="price_alerts")
     notification_logs: Mapped[list[NotificationLog]] = relationship(

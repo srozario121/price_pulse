@@ -139,11 +139,11 @@ shell-backend:  ## Open bash shell inside the running backend container
 # ---------------------------------------------------------------------------
 .PHONY: worker
 worker:         ## Start Celery worker locally (no Docker)
-	cd backend && uv run celery -A app.workers.celery_app worker --loglevel=info
+	cd backend && uv run celery -A app.workers.celery_app worker --pool=asyncio --loglevel=debug
 
 .PHONY: beat
 beat:           ## Start Celery Beat scheduler locally (no Docker)
-	cd backend && uv run celery -A app.workers.celery_app beat --loglevel=info
+	cd backend && uv run celery -A app.workers.celery_app beat --scheduler redbeat.RedBeatScheduler --loglevel=debug
 
 # ---------------------------------------------------------------------------
 # Code analysis

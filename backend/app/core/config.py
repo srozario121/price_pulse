@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # ── Redis / Celery ────────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = ""  # falls back to REDIS_URL when empty
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
 
     # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY: str = ""
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     SCRAPE_INTERVAL_MINUTES: int = 30
     SCRAPE_MIN_DELAY_SECONDS: int = 2
+    ALERT_COOLDOWN_HOURS: int = 24
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Env var: comma-separated string "http://localhost:5173,https://..."

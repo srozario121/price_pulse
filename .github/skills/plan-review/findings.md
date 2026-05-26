@@ -210,3 +210,70 @@ Added WhatsApp as a third notification channel alongside email and webhook. Prov
 - `CHANGELOG.md` (update at implementation time)
 
 **Key design constraint**: Route integration tests must use the Postgres testcontainer (`pg_async_client`) rather than SQLite because item 3 native ENUMs are DB-dialect-specific; this means every API-layer integration test spins the testcontainer and the test suite must not assume SQLite compatibility.
+
+---
+
+## TODO item 7 — Frontend React Application (2026-05-26)
+
+**Ambiguities found**: 26
+
+| Category | Finding | Resolution |
+|---|---|---|
+| Scope gap | `react-router-dom` v6 already installed in `package.json` but no routing setup tasks (`App.tsx`, `BrowserRouter`, `Routes`, route definitions) | Explicit tasks added for `App.tsx`, routing structure (`/`, `/products/:id`, `/products/:id/alerts`), and `main.tsx` rewrite |
+| Scope gap | No `QueryClientProvider` / `App.tsx` entrypoint task | `App.tsx` with `QueryClientProvider` + `BrowserRouter` + `ErrorBoundary` + `<Routes>` added as explicit task |
+| Scope gap | `tailwindcss`, `postcss`, `autoprefixer` not in `package.json`; no task to add them | Added to runtime deps task; `npx shadcn-ui@latest init` scaffolds `tailwind.config.ts` and `globals.css` |
+| Scope gap | shadcn/ui not mentioned; no `@radix-ui/*`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `tailwindcss-animate` deps | User selected shadcn/ui as component library; all deps added to package.json task |
+| Scope gap | No path alias config (`@/*` → `./src/*`) in `tsconfig.app.json` or `vite.config.ts` — required by shadcn/ui | Explicit tasks for both tsconfig and vite.config path alias updates |
+| Scope gap | `src/globals.css` (CSS variable tokens) and `src/lib/utils.ts` (`cn()` helper) not listed — shadcn/ui prerequisites | Explicit tasks added; generated via `npx shadcn-ui@latest init` and committed |
+| Scope gap | TypeScript API types management unspecified (types must mirror backend Pydantic schemas) | `openapi-typescript` added as devDep; `make generate-types` target added; placeholder hand-written `src/api/types.ts` for item 7 development |
+| Scope gap | No MSW handler location specified (v2 requires handlers.ts + server.ts) | `tests/mocks/handlers.ts` + `tests/mocks/server.ts`; imported in `tests/setup.ts` |
+| Scope gap | No `ErrorBoundary` component task (mentioned in test strategy but not in implementation) | `src/components/ErrorBoundary.tsx` class component added; wraps `<Routes>` in `App.tsx` |
+| Scope gap | No shared Layout / top nav component | `src/components/Layout.tsx` with top nav + theme toggle added |
+| Scope gap | Date range filter UI for PriceChart unspecified | shadcn/ui Popover + Calendar (react-day-picker `mode="range"`) + `date-fns`; `react-day-picker` and `date-fns` added as deps |
+| Scope gap | `POST /products/{id}/scrape` trigger UI not mentioned | "Scrape Now" button on `ProductDetail` header; `useScrape.ts` hook; `sonner` toast on 202 |
+| Scope gap | Loading state components not listed | shadcn/ui `Skeleton` rows in Dashboard; skeleton chart area in ProductDetail |
+| Scope gap | Pagination UI unspecified (API returns `PaginatedResponse`) | Infinite scroll via `useInfiniteQuery` + `react-intersection-observer` `useInView` sentinel div |
+| Scope gap | Alert form conditional channel fields not mentioned (`webhook_url`, `whatsapp_number` from item 5) | `AlertFormDialog` renders `webhook_url` only when `channel=webhook`; `whatsapp_number` only when `channel=whatsapp`; zod `superRefine` makes conditional fields required |
+| Scope gap | Form validation library unspecified | `react-hook-form` + `zod` + `@hookform/resolvers` added as deps |
+| Scope gap | `src/main.tsx` is a placeholder; no rewrite task | Explicit task to rewrite `main.tsx` with `QueryClientProvider`, `BrowserRouter`, `<Toaster />` |
+| Scope gap | Product management actions (edit/delete/deactivate) UI location not specified | Kebab DropdownMenu on Dashboard rows — Edit modal, Activate/Deactivate PATCH, Delete confirmation dialog |
+| Test coverage | Live E2E marked "not required" but all four layers requested | Playwright (`@playwright/test`) smoke test in `frontend/tests/e2e/`; `make test-e2e` target; `npx playwright install chromium` in `make install` |
+| Test coverage | Zustand store unit tests not listed | Unit tests for `setColorScheme`, `setSelectedProductId`, `setActiveProductFilter` mutations added to test strategy |
+| Test coverage | MSW handlers for specific API endpoints not listed | Explicit MSW handler task covering all 11 API endpoints (products CRUD + prices + scrape + alerts CRUD) |
+| Architecture | Zustand store scope undefined (server state vs UI state boundary) | Zustand: `selectedProductId`, `colorScheme`, `activeProductFilter`, `activeAlertFilter` only; all server state in react-query |
+| Architecture | Dark mode implementation unspecified (`prefers-color-scheme` CSS vs Tailwind class) | Tailwind `darkMode: 'class'`; Zustand `colorScheme` drives `document.documentElement.classList`; system default reads `matchMedia` on init |
+| Architecture | Toast library unspecified | `sonner` added as runtime dep; `<Toaster />` in `App.tsx` |
+| Architecture | Price formatting utility unspecified | `src/lib/formatPrice.ts` — `Intl.NumberFormat('en-GB', { style: 'currency', currency })` |
+| Architecture | AlertManager routing and access path unspecified | `/products/:id/alerts` sub-route; pre-filters `GET /alerts?product_id=:id`; "Manage alerts" button from ProductDetail |
+
+**Tasks added**: 33 detailed tasks replacing the original 10 high-level stubs — package/tooling setup (9), types and API client (2), app shell and routing (4), Zustand store (1), utility functions (1), hooks (4), pages (3), components (5), MSW infrastructure (3), Playwright E2E (1)
+**Tasks removed/changed**: All 10 original tasks replaced — "Initialise frontend/" expanded into 9 tooling tasks; each page/hook/component task expanded with explicit layout, interaction, and implementation spec; "Add polling" absorbed into `usePrices.ts` task; "Implement responsive layout with Tailwind" replaced with explicit dark mode + Layout component task
+**Documentation changes**: `frontend/package.json` (update); `frontend/playwright.config.ts` (create); `frontend/tailwind.config.ts` (create); `frontend/src/globals.css` (create); `frontend/src/lib/utils.ts` (create); `frontend/src/lib/formatPrice.ts` (create); `frontend/src/api/types.ts` (create); `frontend/src/api/client.ts` (create); `frontend/src/main.tsx` (update); `frontend/src/App.tsx` (create); `frontend/src/store/uiStore.ts` (create); `frontend/src/components/` × 5 (create); `frontend/src/pages/` × 3 (create); `frontend/src/hooks/` × 4 (create); `frontend/tests/mocks/` × 2 (create); `frontend/tests/setup.ts` (update); `frontend/tests/e2e/smoke.spec.ts` (create); `Makefile` (update — `test-e2e` + playwright install); `CLAUDE.md` (update); `CHANGELOG.md` (update at implementation time)
+**Key design constraint**: The frontend is built entirely on shadcn/ui (Radix + Tailwind); this requires `tailwindcss`, `postcss`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, and the shadcn/ui CLI init step before any component can render. All these prerequisites must be complete before any page or component task begins.
+
+---
+
+## TODO item 8 — Docker Containerisation (2026-05-26)
+
+**Ambiguities found**: 13
+
+| Category | Finding | Resolution |
+|---|---|---|
+| Scope gaps | Item 8 had no `### Design decisions` or `### Documentation` sub-sections — bare task list and two-line test strategy | Both sections added; all 13 ambiguities embedded as resolved decisions |
+| Error & edge-case handling | `backend.Dockerfile` production stage uses `HEALTHCHECK CMD curl -f ...` but `python:3.12-slim` does not include `curl` — healthcheck silently fails | Add `apt-get install -y --no-install-recommends curl` in production stage |
+| Scope gaps | `backend.Dockerfile` builder stage copies only `backend/pyproject.toml`, not root `pyproject.toml` or `uv.lock` — `uv sync` installs unpinned latest deps instead of locked versions | Fix COPY sequence to include root workspace files; add `--frozen` flag to `uv sync` |
+| Integration wiring | Item 5 decided `asyncio` pool for all Celery workers; scaffold `docker-compose.yml` uses `--concurrency=4` (pre-fork) for `celery-worker` and `celery-playwright.Dockerfile` uses `--pool=gevent` | Both corrected to `--pool=asyncio` in compose and Dockerfile |
+| Model/data design | `docker-compose.yml` uses `postgres:15-alpine`; integration tests target `postgres:16` (session log confirms pg16 was used during integration test fixes) | Upgrade compose to `postgres:16-alpine` for dialect consistency |
+| Error & edge-case handling | Production compose does not set `CORS_ORIGINS`; `Settings` raises `ValueError` when `DEBUG=false` and env var is absent — `make up` on fresh `.env` fails at FastAPI startup | Add `CORS_ORIGINS=http://localhost` to `.env.example` with inline production warning comment |
+| Scope gaps | Resource limits listed in task description but no values or services specified | Concrete `deploy.resources.limits` per all 7 services (backend 512m/0.5CPU, celery-playwright 1g/1CPU for Chromium, etc.) |
+| Test coverage | Unit layer marked N/A; user requested all four test layers | Unit layer defined: `make lint-docker` (hadolint) + `make validate-nginx` (nginx -t via Docker) |
+| Test coverage | Integration smoke vague ("GET /health returns 200"); no scripted form | `make smoke` target added: compose up → poll /health (5 s × 12) → /nginx-health → frontend → compose down |
+| Test coverage | No CI gate for compose wiring regressions | New `smoke` job in `ci.yml` that depends on `build` job; fails PR on startup timeout |
+| Scope gaps | No image scanning task | `make scan` target using `aquasec/trivy` Docker image; fails on CRITICAL CVEs; runs in CI after `build` |
+| Scope gaps | No Nginx security headers | `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `X-XSS-Protection` added to `nginx.conf` |
+| Scope gaps | `celery-playwright` CMD path (WORKDIR + module path) untested after pool and base image changes | Explicit verification task: `docker compose run --rm celery-playwright celery ... inspect ping` |
+
+**Tasks added**: 14 — `backend.Dockerfile` builder COPY fix; `backend.Dockerfile` curl install; `celery-playwright.Dockerfile` pool fix; `celery-worker` compose command fix; `celery-playwright` compose command fix; postgres version upgrade; `deploy.resources.limits` for all 7 services; nginx security headers; `CORS_ORIGINS` in `.env.example`; `make lint-docker`; `make validate-nginx`; `make scan`; `make smoke`; CI `smoke` job
+**Tasks removed/changed**: 1 — "Verify `make up` brings the full stack to healthy state within 60 seconds" replaced by the scripted `make smoke` target and CI `smoke` job
+**Documentation changes**: `docker/backend.Dockerfile` (update — builder COPY + curl); `docker/celery-playwright.Dockerfile` (update — pool flag); `docker/nginx.conf` (update — security headers); `docker-compose.yml` (update — pool fix, postgres 16, resource limits); `.env.example` (update — CORS_ORIGINS); `Makefile` (update — 4 new targets); `.github/workflows/ci.yml` (update — smoke job); `CLAUDE.md` (update — commands table + env table + architecture); `CHANGELOG.md` (update at implementation time)
+**Key design constraint**: `backend.Dockerfile` must copy the root `pyproject.toml` and `uv.lock` into the builder stage and use `uv sync --frozen --no-dev` — without the lockfile, Docker builds install unpinned dependency versions and diverge from the development environment silently. This is the most structurally significant correctness fix in item 8.

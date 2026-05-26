@@ -5,6 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict
 
 from app.models.alert import AlertDirection
+from app.models.notification_log import NotificationChannel
 
 
 class AlertBase(BaseModel):
@@ -12,6 +13,9 @@ class AlertBase(BaseModel):
     threshold_price: Decimal
     direction: AlertDirection
     is_active: bool = True
+    channel: NotificationChannel = NotificationChannel.email
+    webhook_url: str | None = None
+    whatsapp_number: str | None = None
 
 
 class AlertCreate(AlertBase):
@@ -30,3 +34,6 @@ class AlertUpdate(BaseModel):
     threshold_price: Decimal | None = None
     direction: AlertDirection | None = None
     is_active: bool | None = None
+    channel: NotificationChannel | None = None
+    webhook_url: str | None = None
+    whatsapp_number: str | None = None

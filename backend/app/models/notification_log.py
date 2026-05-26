@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 class NotificationChannel(enum.StrEnum):
     email = "email"
     webhook = "webhook"
+    whatsapp = "whatsapp"
 
 
 class NotificationStatus(enum.StrEnum):

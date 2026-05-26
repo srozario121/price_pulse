@@ -39,7 +39,7 @@ services:
   celery-beat:
     build:
       target: development
-    command: celery -A app.workers.celery_app beat --loglevel=debug
+    command: celery -A app.workers.celery_app beat --loglevel=debug --scheduler redbeat.RedBeatScheduler
     volumes:
       - ./backend:/app:cached
 
