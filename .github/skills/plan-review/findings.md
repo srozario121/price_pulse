@@ -74,3 +74,139 @@ This file logs the output of the `plan-review` agent for each TODO.md item revie
 **Tasks removed/changed**: 2 — generic "Pydantic v2 schemas mirroring models" replaced with four explicit schema files with named variants; "Generate and apply migration" expanded to specify four PG ENUM types, four tables, four named indexes in one combined revision
 **Documentation changes**: `backend/pyproject.toml` (update — add testcontainers dep); `backend/tests/conftest.py` (update — add pg_engine fixture); `backend/alembic/env.py` (update — uncomment model imports stub); `CLAUDE.md` (update — models architecture and test structure sections); `CHANGELOG.md` (update at implementation time)
 **Key design constraint**: Native Postgres ENUM types require a split test strategy — unit tests use SQLite in-memory (schema round-trips only), integration tests use a real Postgres testcontainer (`pg_engine` fixture). This `pg_engine` fixture is the canonical test DB for all items from item 3 onwards that touch ENUM columns.
+
+---
+
+## TODO item 4 — Price Scraping Engine (2026-05-25)
+
+**Ambiguities found**: 22
+
+| Category | Finding | Resolution |
+|---|---|---|
+| Scope gaps | `playwright`, `parsel` missing from `pyproject.toml`; no task to add them | Added as explicit tasks; `celery[redis]` replaced with `celery[redis,asyncio]` |
+| Scope gaps | `ScrapedResult` return type of `BaseScraper.fetch()` undefined (no fields, no location) | Rich Pydantic model in `schemas/scraper.py`: `url`, `html`, `html_hash`, `price`, `currency`, `scraped_at`, `extraction_status` |
+| Scope gaps | `ScraperError` and `UnknownSourceError` referenced in test strategy but no task to define them | New file `scrapers/exceptions.py` with both classes |
+| Scope gaps | `ExtractionStatus` enum undefined — needed by both `ScrapedResult` and `PriceRecord.extraction_status` column | New file `models/enums.py`; values `ok`, `extraction_failed`, `http_error` |
+| Model/data design | `css_selector_currency` for currency extraction not in item 3 spec | Item 4 adds Alembic migration: `css_selector_currency VARCHAR NULL` on `products` |
+| Model/data design | Item 3 defined `PriceRecord.price` as `NOT NULL` but item 4 must store `price=NULL` for failed scrapes | Item 4 adds migration to make `price` and `currency` nullable; adds `extraction_status` column |
+| Model/data design | `SourceType` Python enum values must match the `source_type_enum` PG ENUM from item 3 (`generic`, `amazon`, `ebay`, `currys`) | `SourceType(str, Enum)` in `registry.py` has all four values; only `GENERIC` and `AMAZON` scrapers implemented in item 4 |
+| External service calls | Amazon pages are JS-rendered; httpx cannot reliably extract prices | Playwright headless browser (`playwright.async_api`) for `AmazonScraper` |
+| External service calls | Playwright is async; Celery workers are sync by default — async/sync boundary | `celery[asyncio]` pool; item 4 documents requirement; item 5 configures `workers/celery_app.py` |
+| External service calls | Amazon extraction selector strategy unspecified (CSS selectors change frequently) | `page.evaluate()` JS snippet targeting `ld+json schema.org/Product` or `/Offer`; no CSS fallback — fail cleanly if absent |
+| External service calls | Playwright browser lifecycle: per-task vs. singleton per worker | Per-task: open fresh browser context → extract → close; simple isolation at 30-min polling interval |
+| Error & edge-case handling | HTTP error handling: raise `ScraperError` vs. encode in return value | `fetch()` never raises for HTTP errors; encodes failure as `ScrapedResult(extraction_status='http_error')` |
+| Error & edge-case handling | Which HTTP status codes trigger retry vs. immediate failure | Retry 5xx + 429 + 403 with exponential back-off (1s/2s/4s); 429 honours `Retry-After`; `http_error` after retries exhausted |
+| Error & edge-case handling | `price=None` from failed extraction — skip storing or persist? | Always store `PriceRecord` for all outcomes; `extraction_status` encodes the result |
+| Error & edge-case handling | Alert evaluation on failed scrape records | Skip evaluation (structlog WARNING) when latest `PriceRecord.extraction_status != 'ok'` |
+| Error & edge-case handling | Alert lifecycle after triggering — one-shot, persistent, or cooldown? | Cooldown: 24h hardcoded constant in `alert_service.py`; item 5 promotes to `Settings.ALERT_COOLDOWN_HOURS` |
+| Integration wiring | `alert_service.evaluate_alerts()` must dispatch Celery `send_notification` task (item 5) which doesn't exist yet | Stub: `services/notifications.py` — `notify_alert(alert_id) -> None` no-ops; item 5 replaces with `send_notification.delay()` |
+| Integration wiring | Celery queue routing for Amazon tasks — item 4 or item 5 owns it? | Item 4 documents requirement (`'playwright'` queue for Amazon tasks); item 5 implements `CELERY_TASK_ROUTES` |
+| External service calls | robots.txt compliance — actual `robotparser` parsing or polite delays? | Log-and-proceed: fetch per domain, Redis-cache 1h, warn on disallowed paths, proceed |
+| External service calls | Per-domain rate limiting — per-worker (in-memory) or shared (Redis)? | Redis-backed; key `rate_limit:{domain}`, TTL = `SCRAPE_MIN_DELAY_SECONDS` (default 2s, configurable) |
+| Architecture & data model | Playwright Docker image strategy — keep backend lean or add Playwright layer? | Separate `celery-playwright` Docker service using `mcr.microsoft.com/playwright/python`; both `docker-compose.yml` and `docker-compose.dev.yml` |
+| Test coverage | Live E2E for Amazon unreliable due to bot detection; single `live_api` marker insufficient | Two markers: `@pytest.mark.live_api` for `books.toscrape.com` (generic); `@pytest.mark.live_amazon` for Amazon (separate, documented as flaky) |
+
+**Tasks added**: 15 — `models/enums.py`; `schemas/scraper.py`; `scrapers/exceptions.py`; `services/notifications.py`; `pyproject.toml` deps update; `SCRAPE_MIN_DELAY_SECONDS` config field; `Makefile` playwright install step; `live_amazon` marker registration; `.env.example` update; migration for `css_selector_currency`; migration for `extraction_status` + nullable price; `docker/celery-playwright.Dockerfile`; `docker-compose.yml` service; `docker-compose.dev.yml` override; explicit `celery-playwright` queue routing design note for item 5
+**Tasks removed/changed**: 1 — `amazon.py` description updated from "httpx + selective parsing" to "Playwright per-task browser + ld+json JS extraction"
+**Documentation changes**: `backend/pyproject.toml` (update); `backend/app/core/config.py` (update); `.env.example` (update); `Makefile` (update); `docker/celery-playwright.Dockerfile` (create); `docker-compose.yml` (update); `docker-compose.dev.yml` (update); `CLAUDE.md` (update); `CHANGELOG.md` (update at implementation time)
+**Key design constraint**: `BaseScraper.fetch()` never raises for HTTP errors — all outcomes (success, extraction failure, HTTP error) are encoded in `ScrapedResult.extraction_status`. This uniform return type is the contract that `price_service.record_price()` depends on; violating it breaks the deduplication and alert evaluation flow.
+
+---
+
+## TODO item 5 — Celery Task Infrastructure (2026-05-26)
+
+**Ambiguities found**: 19
+
+| Category | Finding | Resolution |
+|---|---|---|
+| Scope gaps | `django_celery_beat.schedulers:DatabaseScheduler` in `docker-compose.yml` is a Django-specific package incompatible with FastAPI | Replace with `celery-redbeat` and `--scheduler redbeat.RedBeatScheduler` in both compose files |
+| Scope gaps | `celery-redbeat` not listed as a dependency despite dynamic per-product schedule being required | Add `celery-redbeat>=0.13` to `backend/pyproject.toml` runtime deps |
+| Scope gaps | `docker-compose.dev.yml` celery-beat runs without `--scheduler` flag (defaults to file-based), inconsistent with production | Add `--scheduler redbeat.RedBeatScheduler` to dev compose celery-beat command |
+| Scope gaps | `CELERY_RESULT_BACKEND` present in `.env.example` but absent from `Settings` class in `config.py` | Add `CELERY_RESULT_BACKEND: str` to `Settings`; Celery `result_backend` reads from it |
+| Scope gaps | Celery queue routing for Amazon tasks (`'playwright'` queue) documented in item 4 but absent from item 5 task list | Amazon tasks dispatched with `queue='playwright'` at call site in `scrape_product`; `CELERY_TASK_ROUTES` wired in `celery_app.py` |
+| Scope gaps | `ALERT_COOLDOWN_HOURS` promotion from hardcoded `24` in `alert_service.py` to `Settings` — item 4 deferred this to item 5, but item 5 had no task for it | Add `ALERT_COOLDOWN_HOURS: int = 24` to `Settings`; `alert_service.py` reads `settings.ALERT_COOLDOWN_HOURS` |
+| Scope gaps | `services/notifications.py` stub replacement with `send_notification.delay()` not listed in item 5 tasks | Explicit task added: replace stub body with `send_notification.delay(alert_id)` |
+| Scope gaps | Flower monitoring service listed as a task but already wired in `docker-compose.dev.yml` from item 1 | Removed as duplicate; no re-implementation needed |
+| Model/data design | `NotificationLog.channel` is NOT NULL but `PriceAlert` has no channel field — `send_notification` cannot determine delivery channel | Add `channel` (`notification_channel_enum`, NOT NULL, default `'email'`) and `webhook_url` (`VARCHAR(512)`, nullable) to `PriceAlert`; Alembic migration in item 5 |
+| Model/data design | `AlertCreate`/`AlertRead`/`AlertUpdate` schemas not updated to reflect new `channel` and `webhook_url` fields | `AlertBase` updated with both fields; propagated to all schema variants |
+| Model/data design | Notification payload content undefined — `NotificationLog.payload` is JSON but schema not specified | `{"product_id", "product_name", "product_url", "current_price", "threshold_price", "direction"}` — resolved by task from alert + product + latest price record |
+| Integration wiring | Celery worker pool unspecified — item 4 introduced `celery[asyncio]` but `celery_app.py` creation in item 5 never named the pool setting | `worker_pool = 'celery.concurrency.aio:TaskPool'` configured in `celery_app.py`; all tasks as native `async def` |
+| Integration wiring | DB session access pattern inside async Celery tasks undefined | Each task opens `async with AsyncSessionLocal() as session:` directly — no custom base class |
+| Error & edge-case handling | `scrape_product` retry count and backoff unspecified ("N times" in original) | `max_retries=3`, exponential countdown `2 ** task.request.retries` seconds; structlog ERROR on exhaustion |
+| Error & edge-case handling | "DLQ logging" vague — actual Redis dead-letter queue or just structured logging? | No Redis DLQ in item 5; "DLQ" means structlog ERROR on max-retries exhaustion; true DLQ deferred |
+| Error & edge-case handling | `send_notification` retry policy and failure handling unspecified | `max_retries=3`, `default_retry_delay=5`; on exhaustion set `NotificationLog.status='failed'` and log ERROR |
+| Error & edge-case handling | Email delivery undefined — real SMTP or stub | Structlog INFO stub (no SMTP); sets `status='sent'`; SMTP deferred to auth/user item |
+| Error & edge-case handling | Webhook delivery undefined — how is the URL resolved and what status codes trigger retry | `httpx.AsyncClient().post(alert.webhook_url, timeout=10.0)`; `status='sent'` on 2xx; `status='failed'` on error; retry on `TimeoutException` |
+| Error & edge-case handling | Task time limits unspecified — scrape tasks could hang indefinitely | `task_soft_time_limit=120`, `task_time_limit=150` seconds set globally in `celery_app.py` |
+
+**Tasks added**: 9 — `celery-redbeat` dep; `CELERY_RESULT_BACKEND` + `ALERT_COOLDOWN_HOURS` in `Settings`; `.env.example` update; `alert_service.py` cooldown from Settings; `PriceAlert.channel` + `webhook_url` fields + migration; `AlertBase` schema update; `notifications.py` stub replacement; `make worker` + `make beat` Makefile targets; docker-compose celery-beat command fix (both files)
+**Tasks removed/changed**: 2 — "Implement Flower monitoring service" removed (already done in item 1); "Wire celery-worker and celery-beat Docker services" narrowed to fixing the `django_celery_beat` scheduler reference; `schedule.py` respecified from static `beat_schedule` dict to `register_product_schedule` / `deregister_product_schedule` / `startup_sync_schedules` helpers
+**Documentation changes**: `backend/pyproject.toml` (update); `backend/app/core/config.py` (update); `.env.example` (update); `backend/app/models/alert.py` (update); `backend/app/schemas/alert.py` (update); `backend/alembic/versions/` (new migration file); `backend/app/services/alert_service.py` (update); `backend/app/services/notifications.py` (update); `docker-compose.yml` (update); `docker-compose.dev.yml` (update); `Makefile` (update); `CLAUDE.md` (update); `CHANGELOG.md` (update at implementation time)
+**Key design constraint**: `celery-redbeat` is the beat scheduler — `django_celery_beat` (already in `docker-compose.yml`) must be removed entirely. Per-product schedules are stored in Redis as `RedBeatSchedulerEntry` objects; the `startup_sync_schedules()` worker-ready signal handler bootstraps entries for all active products on first start, so no product is silently unscheduled after a Redis flush.
+
+### Amendment — WhatsApp notification channel (2026-05-26)
+
+Added WhatsApp as a third notification channel alongside email and webhook. Provider selection deferred to a spike rather than committing to Twilio.
+
+**Changes to TODO item 5**:
+
+| Area | Change |
+|---|---|
+| `notification_channel_enum` (item 3 schema) | Extended via `ALTER TYPE notification_channel_enum ADD VALUE 'whatsapp'` in the item 5 migration; must be emitted manually before `op.add_column()` calls as Alembic autogenerate does not detect ENUM value additions |
+| `NotificationChannel` Python enum | `whatsapp = 'whatsapp'` added to `backend/app/models/notification_log.py` |
+| `PriceAlert` model | `whatsapp_number VARCHAR(20) NULL` (E.164 format) added alongside `channel` and `webhook_url` |
+| `AlertBase` schema | `whatsapp_number: str \| None = None` added; propagated to Create/Read/Update variants |
+| Alembic migration renamed | `add_alert_channel_whatsapp` — covers `ALTER TYPE` extension + three new `price_alert` columns |
+| WhatsApp provider | **Not decided in item 5.** Spike sub-task added: evaluate Meta Cloud API (direct), Twilio, Vonage, MessageBird/Bird on pricing, Python SDK maturity, sandbox availability, rate limits; produce ADR at `docs/decisions/whatsapp-provider.md` |
+| `send_notification` task | WhatsApp branch: structlog WARNING stub + `status='sent'`; no provider SDK; real delivery implemented in follow-on item after ADR approval |
+| Tests added | Unit: WhatsApp stub → WARNING event emitted, `status='sent'`, no external call; Integration: WhatsApp channel → `NotificationLog.status='sent'`; Negative: `whatsapp_number=None` → `status='failed'` |
+| `docs/decisions/whatsapp-provider.md` | New ADR document created as output of the spike |
+
+---
+
+## TODO item 6 — REST API Endpoints (2026-05-26)
+
+**Ambiguities found**: 13
+
+| Category | Finding | Resolution |
+|---|---|---|
+| Scope gap | `POST /products/{id}/scrape` returned no response schema and the async/sync mode was unspecified | 202 Accepted; `ScrapeJobResponse` in `schemas/common.py` with `task_id`, `status: "queued"`, `product: ProductRead` |
+| Model/data design | Pagination response shape was unspecified (`limit`/`offset` mentioned but no envelope) | Typed `PaginatedResponse[T]` in `schemas/common.py` with `items`, `total`, `limit`, `offset`; `limit` max 100 |
+| Scope gap | `GET /alerts` had no filter param despite `product_id` FK on every alert | Added optional `?product_id=X` query param |
+| Scope gap | `GET /products` and `GET /alerts` had no active-status filter | Added optional `?is_active=true/false` to both list endpoints; returns all records by default |
+| Test coverage | `async_client` fixture uses SQLite; native Postgres ENUMs from item 3 are incompatible with SQLite | New `pg_async_client` fixture (Postgres testcontainer) added to `conftest.py`; route integration tests use `pg_async_client` |
+| Test coverage | Live E2E layer marked "not required" despite all-four-layer requirement | Full CRUD smoke `@pytest.mark.live_api`: POST product → GET → PATCH → DELETE; POST alert → GET /alerts?product_id=X |
+| Scope gap | No HTTP success codes specified for POST and DELETE | 201 Created for POST; 204 No Content for DELETE; 200 for GET and PATCH |
+| Error & edge-case handling | `PATCH /products/{id}` with a conflicting URL and `AlertUpdate.product_id` both unaddressed | 409 on duplicate URL in POST/PATCH products; `product_id` removed from `AlertUpdate`; PATCH /alerts returns 422 if `product_id` supplied |
+| Scope gap | `GET /products/{id}/prices` had no date-range filtering | Added optional `?from_dt` / `?to_dt` ISO 8601 params |
+| Integration wiring | `main.py` router mount was commented out with no task to activate it | Explicit task to uncomment the stub at lines 109–111 |
+| Scope gap | Celery task dependency: `scrape_product` from item 5 is not yet implemented | `tasks/scrape.py` stub created in item 6 (raises `NotImplementedError`); item 5 replaces with Celery task |
+| Documentation | `openapi.json` generation command/tooling was unspecified | `make generate-openapi` Makefile target using `app.openapi()` directly |
+| Scope gap | Default sort order for all list endpoints was unspecified | Products: `created_at DESC`; prices: `captured_at DESC`; alerts: `id ASC` |
+
+**Tasks added**:
+- `backend/app/schemas/common.py` — create `PaginatedResponse[T]` and `ScrapeJobResponse`
+- `backend/app/tasks/scrape.py` — create `scrape_product` stub
+- `pg_async_client` fixture in `backend/tests/conftest.py`
+- `make generate-openapi` Makefile target
+- Explicit task to uncomment router mount in `main.py`
+
+**Tasks removed/changed**:
+- Original bare `GET /products/{id}/prices` task expanded with `from_dt`/`to_dt` params
+- `POST /products/{id}/scrape` changed from unspecified to async 202 with `ScrapeJobResponse`
+- `AlertUpdate.product_id` field removed from schema
+- Pagination task expanded from a note to a concrete schema task
+
+**Documentation changes**:
+- `backend/app/schemas/common.py` (create)
+- `backend/app/schemas/alert.py` (update — remove `product_id` from `AlertUpdate`)
+- `backend/app/tasks/scrape.py` (create — stub)
+- `backend/app/api/v1/products.py`, `prices.py`, `alerts.py`, `router.py` (create)
+- `backend/app/main.py` (update — uncomment router mount)
+- `backend/tests/conftest.py` (update — add `pg_async_client`)
+- `Makefile` (update — add `generate-openapi`)
+- `backend/openapi.json` (create — generated snapshot)
+- `CLAUDE.md` (update — commands table, API layer architecture)
+- `CHANGELOG.md` (update at implementation time)
+
+**Key design constraint**: Route integration tests must use the Postgres testcontainer (`pg_async_client`) rather than SQLite because item 3 native ENUMs are DB-dialect-specific; this means every API-layer integration test spins the testcontainer and the test suite must not assume SQLite compatibility.
