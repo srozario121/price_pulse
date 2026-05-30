@@ -297,7 +297,7 @@ jobs:
       - name: Install all deps (creates log dirs via init-logs)
         run: |
           uv sync
-          cd frontend && npm ci
+          npm ci --prefix frontend
           make init-logs
 
       - name: Validate agent frontmatter and paths
