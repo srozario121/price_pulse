@@ -10,8 +10,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock* ./
 COPY backend/pyproject.toml backend/
 
-# Install runtime deps only (--frozen ensures the lockfile is honoured)
-RUN uv sync --frozen --no-dev --no-install-workspace
+# Export all workspace member deps from the frozen lockfile and install into .venv
+# uv sync --no-install-workspace from workspace root produces an empty venv in this setup.
+RUN uv export --frozen --no-dev --no-hashes --package price-pulse-backend --output-file /tmp/requirements.txt && \
+    uv venv .venv && \
+    uv pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Install Playwright browsers
 RUN uv run --project backend playwright install chromium

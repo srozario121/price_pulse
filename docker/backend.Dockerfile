@@ -22,7 +22,12 @@ FROM base AS builder
 # Copy workspace root files first so uv can resolve the full locked dependency tree
 COPY pyproject.toml uv.lock* ./
 COPY backend/pyproject.toml backend/
-RUN uv sync --frozen --no-dev --no-install-workspace
+# uv sync --no-install-workspace from the workspace root resolves only root deps (empty)
+# and produces an empty venv. Instead: export all workspace member deps from the frozen
+# lockfile, create the venv explicitly, and install via uv pip.
+RUN uv export --frozen --no-dev --no-hashes --package price-pulse-backend --output-file /tmp/requirements.txt && \
+    uv venv .venv && \
+    uv pip install --no-cache-dir -r /tmp/requirements.txt
 
 # ---------------------------------------------------------------------------
 # Development stage — includes dev dependencies for hot-reload
