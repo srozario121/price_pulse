@@ -25,7 +25,7 @@ describe('useCreateAlert', () => {
     act(() => {
       result.current.mutate({
         product_id: 1,
-        threshold_price: '9.99',
+        threshold_price: 9.99,
         direction: 'below',
         is_active: true,
         channel: 'email',
