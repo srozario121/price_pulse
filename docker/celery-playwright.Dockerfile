@@ -11,7 +11,7 @@ COPY pyproject.toml uv.lock* ./
 COPY backend/pyproject.toml backend/
 
 # Install runtime deps only (--frozen ensures the lockfile is honoured)
-RUN uv sync --frozen --no-dev --project backend
+RUN uv sync --frozen --no-dev --no-install-workspace
 
 # Install Playwright browsers
 RUN uv run --project backend playwright install chromium

@@ -22,7 +22,7 @@ FROM base AS builder
 # Copy workspace root files first so uv can resolve the full locked dependency tree
 COPY pyproject.toml uv.lock* ./
 COPY backend/pyproject.toml backend/
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-install-workspace
 
 # ---------------------------------------------------------------------------
 # Development stage — includes dev dependencies for hot-reload
