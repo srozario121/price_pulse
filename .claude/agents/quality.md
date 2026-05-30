@@ -22,10 +22,9 @@ This agent is the canonical quality-assurance surface for the repository.
 
 ### 1. Backend Tests with Coverage
 
-- Run: `cd backend && uv run pytest --cov=app --cov-report=term-missing`
+- Run: `cd backend && uv run pytest --cov=app --cov-report=term-missing -m "not live_api"`
 - Threshold: **90% coverage**
 - Gate fails if coverage drops below threshold or any tests fail
-- Skip live API tests: `uv run pytest -m "not live_api" --cov=app --cov-report=term-missing`
 
 ### 2. Type Checking
 
@@ -61,22 +60,21 @@ This agent is the canonical quality-assurance surface for the repository.
 # Full quality run
 make quality
 
-# Backend only
+# Backend gates individually
 cd backend
-uv run pytest --cov=app --cov-report=term-missing
+uv run pytest --cov=app --cov-report=term-missing -m "not live_api"
 uv run mypy app/ --ignore-missing-imports
 uv run radon cc app/ -a -nc
 uv run radon mi app/ -nc
 
-# Frontend only
-cd frontend
-npm run test:coverage
+# Frontend gate
+cd frontend && npm run test:coverage
 
-# Single backend test file
+# Single backend test
 cd backend && uv run pytest tests/unit/test_price_service.py -v
 
-# Skip live API tests
-cd backend && uv run pytest -m "not live_api"
+# Single frontend test
+cd frontend && npm run test -- Dashboard.test.tsx
 ```
 
 ## Expected Output Shape

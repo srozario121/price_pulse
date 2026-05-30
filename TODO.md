@@ -832,42 +832,33 @@ Adapt and install agents from `presentation_helper` for price_pulse SDLC workflo
 ### Tasks
 
 **Verification of existing agent files**
-- [ ] Verify `.claude/agents/quality.md` — confirm commands reference `backend/`, `frontend/`, `uv run pytest`, `npm run test:coverage`, `config/quality-thresholds.toml`; confirm four gate thresholds (coverage ≥90% backend, ≥80% frontend, CC P95 < 7, MI P5 > 10, Halstead P95 < 500)
-- [ ] Verify `.claude/agents/architecture-maintainer.md` — fix `tests/` → `backend/tests/` and `frontend/tests/` to align with `.github` version; confirm C4 scope matches three levels defined in this item
-- [ ] Verify `.claude/agents/profiling-reviewer.md` — confirm backend log paths (`logs/profiling/backend/`), Celery task hotspot patterns (`scrape_product`), Lighthouse path (`logs/profiling/frontend/`), and findings file path (`.github/skills/profiling/findings.md`) are correct for this stack
-- [ ] Verify `.github/agents/plan-review.agent.md` — confirm frontend test layers (vitest unit, MSW integration) appear in both the Phase 3 rewrite rules and the ambiguity taxonomy; confirm findings log path (`.github/skills/plan-review/findings.md`)
-- [ ] Verify `.github/agents/module-grouping-reviewer.agent.md` — confirm scope is `backend/app/`; confirm the architecture doc reference reads `docs/architecture/repository-architecture.md → ## Module domain-grouping convention` (this section is created in this item)
-- [ ] Verify `.github/agents/quality.agent.md` — confirm all commands match this stack: `uv run pytest -m "not live_api" --cov=app`, `uv run mypy app/ --ignore-missing-imports`, `uv run radon`, `cd frontend && npm run test:coverage`
-- [ ] Verify `.github/agents/profiling-reviewer.agent.md` — confirm all profile log paths, Celery task names, and findings file path (`.github/skills/profiling/findings.md`) are correct; confirm delegation section matches this repo's agent model
-- [ ] Verify `.github/agents/architecture-maintainer.agent.md` — confirm C4 scope matches three levels; confirm directory scope lists `backend/tests/` and `frontend/tests/` explicitly
-- [ ] Sync agent pairs — for each pair (quality, architecture-maintainer, profiling-reviewer): diff `.claude/agents/X.md` against `.github/agents/X.agent.md`; align all paths and rules where no intentional divergence exists; add inline comment for each intentional divergence (acceptable: `name:` + `tools:` frontmatter in `.claude` version; `$ARGUMENTS` + User Input block in `.github` version); confirm no unintended divergence remains
+- [x] Verify `.claude/agents/quality.md` — confirm commands reference `backend/`, `frontend/`, `uv run pytest`, `npm run test:coverage`, `config/quality-thresholds.toml`; confirm four gate thresholds (coverage ≥90% backend, ≥80% frontend, CC P95 < 7, MI P5 > 10, Halstead P95 < 500)
+- [x] Verify `.claude/agents/architecture-maintainer.md` — fix `tests/` → `backend/tests/` and `frontend/tests/` to align with `.github` version; confirm C4 scope matches three levels defined in this item
+- [x] Verify `.claude/agents/profiling-reviewer.md` — confirm backend log paths (`logs/profiling/backend/`), Celery task hotspot patterns (`scrape_product`), Lighthouse path (`logs/profiling/frontend/`), and findings file path (`.github/skills/profiling/findings.md`) are correct for this stack
+- [x] Verify `.github/agents/plan-review.agent.md` — confirm frontend test layers (vitest unit, MSW integration) appear in both the Phase 3 rewrite rules and the ambiguity taxonomy; confirm findings log path (`.github/skills/plan-review/findings.md`)
+- [x] Verify `.github/agents/module-grouping-reviewer.agent.md` — confirm scope is `backend/app/`; confirm the architecture doc reference reads `docs/architecture/repository-architecture.md → ## Module domain-grouping convention` (this section is created in this item)
+- [x] Verify `.github/agents/quality.agent.md` — confirm all commands match this stack: `uv run pytest -m "not live_api" --cov=app`, `uv run mypy app/ --ignore-missing-imports`, `uv run radon`, `cd frontend && npm run test:coverage`
+- [x] Verify `.github/agents/profiling-reviewer.agent.md` — confirm all profile log paths, Celery task names, and findings file path (`.github/skills/profiling/findings.md`) are correct; confirm delegation section matches this repo's agent model
+- [x] Verify `.github/agents/architecture-maintainer.agent.md` — confirm C4 scope matches three levels; confirm directory scope lists `backend/tests/` and `frontend/tests/` explicitly
+- [x] Sync agent pairs — for each pair (quality, architecture-maintainer, profiling-reviewer): diff `.claude/agents/X.md` against `.github/agents/X.agent.md`; align all paths and rules where no intentional divergence exists; add inline comment for each intentional divergence (acceptable: `name:` + `tools:` frontmatter in `.claude` version; `$ARGUMENTS` + User Input block in `.github` version); confirm no unintended divergence remains
 
 **New artifacts**
-- [ ] Complete `docs/architecture/repository-architecture.md` — rewrite stub into full C4 doc with these sections in order:
+- [x] Complete `docs/architecture/repository-architecture.md` — rewrite stub into full C4 doc with these sections in order:
   - `## C1 — System Context`: ASCII diagram showing User → React SPA → FastAPI backend → Postgres + Redis + external retail sites
   - `## C2 — Container Diagram`: table updated to Postgres `16-alpine`; add `celery-playwright` container (Microsoft Playwright image, `playwright` queue)
   - `## C3 — Backend Component Diagram`: one paragraph per layer — API layer (`api/v1/`: thin route handlers, no business logic), service layer (`services/`: sole writer to DB — `price_service`, `alert_service`, `notifications`), scraping layer (`scrapers/`: `BaseScraper`, `GenericScraper`, `AmazonScraper`, `registry`, `http_client`, `exceptions`), ORM models (`models/`: `Product`, `PriceRecord`, `PriceAlert`, `NotificationLog`, `enums`), Pydantic schemas (`schemas/`: `Base/Create/Read/Update` per domain + `scraper.py` + `common.py`), core (`core/`: `config`, `database`, `logging`, `exceptions`)
   - `## Module domain-grouping convention`: naming rules — modules sharing a domain noun and importing each other's types are candidates for subpackage promotion; standalone utilities with high fan-in (> 3 unrelated callers) stay flat; convention enforced by `module-grouping-reviewer.agent.md`
   - `## Data Model`: ASCII ER diagram showing four tables with FK relationships and key field names (Product → PriceRecord via `product_id`; Product → PriceAlert via `product_id`; PriceAlert → NotificationLog via `alert_id`)
   - `## Architecture Decision Records`: markdown table with columns ADR | Date | Status | Summary; one row for `docs/decisions/whatsapp-provider.md` (2026-05-26, Accepted)
-- [ ] Create `.github/skills/profiling/findings.md` — stub:
-  ```markdown
-  # Price Pulse — Profiling Findings
-
-  This file logs durable performance findings from the `profiling-reviewer` agent. Entries are appended chronologically.
-
-  ---
-
-  <!-- Entries are appended below by the profiling-reviewer agent -->
-  ```
-- [ ] Add `make init-logs` Makefile target — `mkdir -p logs/quality logs/profiling/backend logs/profiling/tasks logs/profiling/frontend logs/profiling/test-timing && touch logs/quality/.gitkeep logs/profiling/backend/.gitkeep logs/profiling/tasks/.gitkeep logs/profiling/frontend/.gitkeep logs/profiling/test-timing/.gitkeep`; idempotent
-- [ ] Update `make install` to call `make init-logs` as a final step (after `uv sync`, `npm install`, `playwright install chromium`, `pre-commit install`)
-- [ ] Update `.gitignore` — add `logs/**` with `!logs/**/.gitkeep` exception so log data is excluded but `.gitkeep` stubs are tracked
-- [ ] Add `make lint-agents` Makefile target — shell script that: (1) for each `.claude/agents/*.md`, greps YAML frontmatter block (`---` delimiters) for `name:`, `description:`, `tools:` fields; exits 1 with file name and missing field if any are absent; (2) for each `.github/agents/*.agent.md`, greps frontmatter for `description:` field; exits 1 if absent; (3) extracts path tokens from all Quick Commands code blocks in all agent files (lines matching `^[a-z]|cd |logs/|config/|docs/|backend/|frontend/|.github/`); for each extracted path, checks `[ -e "$path" ]` and exits 1 with the missing path and agent file name if absent; exits 0 if all checks pass
-- [ ] Add `agent-quality` job to `.github/workflows/ci.yml` — steps: checkout, `make install`, `make lint-agents`; triggers on pull_request and push to `main`; job does not depend on other jobs (runs in parallel with `lint`, `test-backend`, `test-frontend`)
+- [x] Create `.github/skills/profiling/findings.md` — stub with header
+- [x] Add `make init-logs` Makefile target — `mkdir -p logs/quality logs/profiling/backend logs/profiling/tasks logs/profiling/frontend logs/profiling/test-timing && touch logs/quality/.gitkeep logs/profiling/backend/.gitkeep logs/profiling/tasks/.gitkeep logs/profiling/frontend/.gitkeep logs/profiling/test-timing/.gitkeep`; idempotent
+- [x] Update `make install` to call `make init-logs` as a final step (after `uv sync`, `npm install`, `playwright install chromium`, `pre-commit install`)
+- [x] Update `.gitignore` — add `logs/**` with `!logs/**/.gitkeep` exception so log data is excluded but `.gitkeep` stubs are tracked
+- [x] Add `make lint-agents` Makefile target — shell script that: (1) for each `.claude/agents/*.md`, greps YAML frontmatter block (`---` delimiters) for `name:`, `description:`, `tools:` fields; exits 1 with file name and missing field if any are absent; (2) for each `.github/agents/*.agent.md`, greps frontmatter for `description:` field; exits 1 if absent; (3) extracts path tokens from all Quick Commands code blocks in all agent files (lines matching `^[a-z]|cd |logs/|config/|docs/|backend/|frontend/|.github/`); for each extracted path, checks `[ -e "$path" ]` and exits 1 with the missing path and agent file name if absent; exits 0 if all checks pass
+- [x] Add `agent-quality` job to `.github/workflows/ci.yml` — steps: checkout, `make install`, `make lint-agents`; triggers on pull_request and push to `main`; job does not depend on other jobs (runs in parallel with `lint`, `test-backend`, `test-frontend`)
 
 **CHANGELOG**
-- [ ] Add `### Added` entry to `CHANGELOG.md` under `## [Unreleased]`: SDLC agent suite (`.claude/agents/` × 3: quality, architecture-maintainer, profiling-reviewer; `.github/agents/` × 5: plan-review, module-grouping-reviewer, quality, profiling-reviewer, architecture-maintainer), C4 repository architecture doc (`docs/architecture/repository-architecture.md`) with data model ER diagram and ADR index, agent frontmatter validation (`make lint-agents`) in new CI `agent-quality` job, log directory scaffolding (`make init-logs`)
+- [x] Add `### Added` entry to `CHANGELOG.md` under `## [Unreleased]`: SDLC agent suite (`.claude/agents/` × 3: quality, architecture-maintainer, profiling-reviewer; `.github/agents/` × 5: plan-review, module-grouping-reviewer, quality, profiling-reviewer, architecture-maintainer), C4 repository architecture doc (`docs/architecture/repository-architecture.md`) with data model ER diagram and ADR index, agent frontmatter validation (`make lint-agents`) in new CI `agent-quality` job, log directory scaffolding (`make init-logs`)
 
 ### Test strategy
 
@@ -970,6 +961,95 @@ Wire the complete GitHub Actions pipeline, enforce quality thresholds locally an
 - **`CONTRIBUTING.md`** — update: add `## Repository Settings` section documenting branch protection configuration
 - **`CLAUDE.md`** — update: commands table to note `make quality` now exits 1 on threshold violation; quality thresholds section to reference `check_quality.py` and GitHub Step Summary
 - **`CHANGELOG.md`** — add `### Added` entry under `## [Unreleased]` at implementation time: security CI job (pip-audit + npm audit CRITICAL gate), quality threshold enforcement script (`check_quality.py`, `--cov-fail-under=90`), GitHub Actions Step Summary coverage table, Postgres 16 in CI test job
+
+---
+
+## 11. Test Suite Health & Coverage Deduplication
+
+Prevent test suite bloat by detecting and eliminating intra-tier coverage duplication — where two test functions in the same tier (both unit, or both integration) exercise the same source line without adding distinct assertions. Uncontrolled duplication inflates run time, makes refactors expensive, and creates false assurance that a line is "well-tested" when it is only visited redundantly.
+
+Cross-tier overlap (a unit test and an integration test covering the same line) is intentional and excluded from this check — unit and integration tests serve different verification purposes.
+
+**Depends on**: Item 10 (CI/CD & Quality Gates) — `backend/scripts/` directory, `make quality` infrastructure, and `logs/quality/` scaffolding must be in place.
+
+### Design decisions (resolved)
+
+- **Definition of duplication**: Two test functions within the same tier (`tests/unit/` or `tests/integration/`) that cover the same source line. Cross-tier overlap is acceptable and not flagged. Rationale: identical behaviour tested at two levels of isolation is a quality multiplier; identical behaviour tested twice at the same level is waste.
+
+- **Backend detection — pytest-cov context tracking**: `pytest-cov` passes `--cov-context=test` to `coverage.py` (supported since v5.x), tagging each `.coverage` database entry with the test node ID that executed it. `coverage json` then produces a JSON file whose `"contexts"` dict maps each covered line to a list of test IDs. A script classifies each test ID by tier (unit or integration by directory path) and flags any line with two or more context entries from the same tier. Rationale: no new dependencies — `coverage.py` is already a transitive dep of `pytest-cov`; the data is already collected after any `--cov` run; context tagging adds negligible overhead.
+
+- **Frontend detection — per-test-file vitest runs**: vitest's V8 and Istanbul coverage providers aggregate coverage across all tests in a single run; neither attributes lines to individual test functions. The practical approach is to run each test file in isolation (`vitest run <file> --coverage`) and save a `coverage-summary.json` per file into a staging directory. A Node.js script then loads all per-file summaries and flags any source line appearing as covered in two or more test-file reports from the same tier. Rationale: per-file runs are the only way to achieve test-function-level attribution in vitest without a custom reporter; the frontend test suite is small (currently ~5 files), so N separate vitest processes is acceptable overhead for a local quality gate.
+
+- **Reporting format — informational first**: Both scripts print a table of (source-file, line, tier, [test-ids]) tuples and a summary line ("N intra-tier duplicate lines across M source files"). Both exit 0 — the initial goal is visibility and baseline establishment, not hard enforcement. When the baseline is understood, a threshold can be added to `config/quality-thresholds.toml` to promote it to a gate. Rationale: enforcing zero tolerance on day one would require remediating unknown scope; track first, enforce later.
+
+- **Correction strategy**: When duplication is flagged, determine whether the two tests assert the same behaviour (merge or delete the weaker test) or different behaviours that share an execution path (extract the shared path to a fixture or helper). No structural changes to test file organisation are required.
+
+- **Backend `coverage json` output location**: Written to `logs/quality/coverage-contexts.json`. Added to `.gitignore` alongside other `logs/` data. Rationale: co-located with other quality artefacts; does not conflict with `coverage.xml` used by `check_quality.py`.
+
+- **Frontend per-file staging directory**: `logs/quality/frontend-coverage-per-file/<test-file-slug>/coverage-summary.json`. Created and deleted on each run of `make check-coverage-overlap-frontend`. Rationale: ephemeral; the comparison script reads from this directory and the result is printed to stdout.
+
+- **`make quality` integration**: Both overlap scripts are called at the end of `make quality` as informational steps and do not change its exit code. Rationale: quality gate exit code is already owned by `check_quality.py` and `--cov-fail-under=90`; adding a new exit-1 condition without calibration would cause spurious CI failures.
+
+### Tasks
+
+**Backend detection**
+- [ ] Append `--cov-context=test` to the pytest invocation in the `make quality` Makefile target (on the same `uv run pytest --cov=app ...` line)
+- [ ] Add `coverage json -o logs/quality/coverage-contexts.json` step to the `make quality` Makefile target, run immediately after pytest (requires `cd backend` prefix; the `.coverage` database is written by pytest-cov in the backend directory)
+- [ ] Create `backend/scripts/check_coverage_overlap.py`:
+  - Load `logs/quality/coverage-contexts.json` (path resolved relative to repo root); exit 1 with "Run make quality first to generate coverage data" if absent
+  - For each source file in the JSON, iterate the `"contexts"` dict (maps line-number string → list of test node ID strings)
+  - Classify each node ID as `unit` (contains `/tests/unit/`) or `integration` (contains `/tests/integration/`); skip `e2e` and unrecognised paths
+  - Flag any line where two or more node IDs share the same tier classification
+  - Print a table: `source_file | line | tier | test_a | test_b`; truncate test IDs to the function name for readability
+  - Print summary: `N intra-tier duplicate lines found across M source files (unit: X, integration: Y)`
+  - Exit 0 always
+- [ ] Add `make check-coverage-overlap` Makefile target: `cd backend && uv run python scripts/check_coverage_overlap.py`
+- [ ] Call `make check-coverage-overlap` at the end of the `make quality` target (after `check_quality.py`)
+
+**Frontend detection**
+- [ ] Create `scripts/check_coverage_overlap_frontend.sh` — for each `*.test.ts` / `*.test.tsx` file found under `frontend/tests/unit/` and `frontend/tests/integration/`, run `npx vitest run --coverage --coverage.reportsDirectory=../../logs/quality/frontend-coverage-per-file/<slug> <file>` where slug is the test file basename without extension; skip `e2e/` files
+- [ ] Create `scripts/check_coverage_overlap_frontend.js` (Node.js, no external deps):
+  - Scan `logs/quality/frontend-coverage-per-file/` for `coverage-summary.json` files; exit 0 with a warning if none found ("Run make check-coverage-overlap-frontend to generate per-file data")
+  - For each source file, collect the set of line numbers reported as covered in each per-file report; classify by tier from the test file's directory path; flag any source line covered by two or more reports from the same tier
+  - Print a table: `source_file | line | tier | test_file_a | test_file_b`
+  - Print summary: `N intra-tier duplicate lines found across M source files`
+  - Exit 0 always
+- [ ] Add `make check-coverage-overlap-frontend` Makefile target: `bash scripts/check_coverage_overlap_frontend.sh && node scripts/check_coverage_overlap_frontend.js`
+- [ ] Call `make check-coverage-overlap-frontend` at the end of the `make quality` target (after the vitest step)
+
+**Baseline**
+- [ ] Run `make check-coverage-overlap` and `make check-coverage-overlap-frontend` on the current codebase; add a `[test-health]` section to `config/quality-thresholds.toml` recording `baseline_backend_duplicate_lines = N` and `baseline_frontend_duplicate_lines = N` with a comment noting the date
+
+**Gitignore**
+- [ ] Verify that `logs/quality/coverage-contexts.json` and `logs/quality/frontend-coverage-per-file/` are excluded by the existing `logs/**` rule in `.gitignore`; add explicit entries only if not already covered
+
+### Test strategy
+
+- **Unit** (isolated, no external processes — Arrange-Act-Assert):
+  - `check_coverage_overlap.py`: fixture `coverage-contexts.json` with two unit test IDs covering the same line in the same file → reports 1 duplicate at tier `unit`; fixture where a unit test and integration test cover the same line → reports 0 duplicates (cross-tier excluded); no duplication at all → "0 intra-tier duplicate lines found"; missing `coverage-contexts.json` → exits 1 with "Run make quality first"; malformed JSON → exits 1 with descriptive parse error, not an unhandled traceback
+  - `check_coverage_overlap_frontend.js`: two `tests/unit/` coverage summaries sharing a line in a source file → 1 duplicate reported; `tests/unit/` and `tests/integration/` covering the same line → 0 duplicates (cross-tier excluded); empty staging directory → exits 0 with warning
+
+- **Integration** (real filesystem — Arrange-Act-Assert):
+  - `make check-coverage-overlap` runs against the real codebase (after `make quality`) → exits 0; summary line printed to stdout
+  - `make check-coverage-overlap-frontend` runs against the real codebase → exits 0; summary line printed to stdout
+
+- **Negative** (Arrange-Act-Assert):
+  - Missing `logs/quality/coverage-contexts.json` → `check_coverage_overlap.py` exits 1 with message containing "Run make quality first"; no unhandled `FileNotFoundError`
+  - Missing `logs/quality/frontend-coverage-per-file/` → `check_coverage_overlap_frontend.js` exits 0 with warning (non-blocking)
+  - Test node ID that matches neither `tests/unit/` nor `tests/integration/` (e.g. `tests/e2e/`) → skipped without error; summary reflects only classified tiers
+
+- **Live E2E**: Not required — passing `make quality` on a clean checkout with both overlap scripts exiting 0 is the acceptance criterion.
+
+### Documentation
+
+- **`Makefile`** — update: add `check-coverage-overlap`, `check-coverage-overlap-frontend` targets; update `make quality` to append `--cov-context=test`, add `coverage json` step, and call both overlap scripts
+- **`backend/scripts/check_coverage_overlap.py`** — create
+- **`scripts/check_coverage_overlap_frontend.sh`** — create
+- **`scripts/check_coverage_overlap_frontend.js`** — create
+- **`config/quality-thresholds.toml`** — update: add `[test-health]` section with baseline counts
+- **`.gitignore`** — update: verify `logs/quality/coverage-contexts.json` and `logs/quality/frontend-coverage-per-file/` are excluded
+- **`CLAUDE.md`** — update: commands table to add `make check-coverage-overlap` and `make check-coverage-overlap-frontend`
+- **`CHANGELOG.md`** — add `### Added` entry under `## [Unreleased]` at implementation time: test suite health tooling (intra-tier coverage deduplication detection via `coverage.py` context tracking for pytest and per-test-file vitest runs)
 
 ---
 

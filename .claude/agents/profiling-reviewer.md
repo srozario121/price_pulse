@@ -66,17 +66,17 @@ Read profiling results from `logs/profiling/`, analyse performance hotspots in b
 ## Quick Commands
 
 ```bash
-# Run backend benchmarks
-cd backend && uv run pytest tests/ --benchmark-only --benchmark-json=logs/profiling/backend/latest.json
+# Backend benchmarks
+cd backend && uv run pytest tests/ --benchmark-only --benchmark-json=../../logs/profiling/backend/$(date +%Y%m%d-%H%M%S)/benchmark.json
 
-# Profile specific endpoint (requires running stack)
-make profile CMD="curl -s http://localhost:8000/api/v1/products"
+# Celery task pyinstrument trace (requires running worker)
+cd backend && uv run pyinstrument -o logs/profiling/tasks/$(date +%Y%m%d-%H%M%S)/profile.html -r html -- python -m app.tasks.scrape scrape_product 1
 
 # Frontend Lighthouse (requires running frontend)
-npx lighthouse http://localhost:5173 --output json --output-path logs/profiling/frontend/latest.json
+npx lighthouse http://localhost:5173 --output json --output-path logs/profiling/frontend/$(date +%Y%m%d-%H%M%S)/report.json
 
 # Test suite timing
-cd backend && uv run pytest --durations=20 -q 2>&1 | tee logs/profiling/test-timing/latest.txt
+cd backend && uv run pytest --durations=20 -q 2>&1 | tee logs/profiling/test-timing/$(date +%Y%m%d-%H%M%S)/timing.txt
 ```
 
 ## Output

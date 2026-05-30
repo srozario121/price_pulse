@@ -268,3 +268,36 @@ jobs:
       - name: Tear down stack
         if: always()
         run: docker compose down
+
+  # ===========================================================================
+  # Job 6 — Agent quality
+  # Validates frontmatter completeness and referenced paths for all SDLC agents.
+  # Runs in parallel with other jobs (no needs: dependency).
+  # ===========================================================================
+  agent-quality:
+    name: Agent quality — frontmatter + path validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install all deps (creates log dirs via init-logs)
+        run: |
+          uv sync
+          cd frontend && npm ci
+          make init-logs
+
+      - name: Validate agent frontmatter and paths
+        run: make lint-agents

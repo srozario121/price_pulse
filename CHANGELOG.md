@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+### Added (Item 9 — Claude Code Agents)
+
+- `docs/architecture/repository-architecture.md`: rewritten from scaffold stub to full C4 doc — C1 system context, C2 container diagram (Postgres 16, celery-playwright container), C3 backend component diagram (all six layers), module domain-grouping convention, ASCII ER diagram for all four ORM tables, ADR index table
+- `.github/skills/profiling/findings.md`: stub file for durable profiling findings appended by `profiling-reviewer` agent
+- `make init-logs`: creates `logs/quality/`, `logs/profiling/backend/`, `logs/profiling/tasks/`, `logs/profiling/frontend/`, `logs/profiling/test-timing/` with `.gitkeep` stubs; idempotent; called by `make install`
+- `make lint-agents`: validates frontmatter completeness (`name`, `description`, `tools` in `.claude/agents/`; `description` in `.github/agents/`) and checks Quick Commands referenced paths exist on disk; exits 1 on any failure
+- CI `agent-quality` job: runs in parallel with other CI jobs; calls `make init-logs` then `make lint-agents`; gates PRs on agent file correctness
+- `.gitignore`: updated `logs/` rule to `logs/**` + `!logs/**/.gitkeep` so log data is excluded but directory stubs are tracked
+- Agent sync: aligned `.claude/agents/` and `.github/agents/` pairs — architecture-maintainer now references `backend/tests/` and `frontend/tests/` consistently; quality agent default run includes `-m "not live_api"`; profiling-reviewer Quick Commands use timestamped output paths and include pyinstrument command
+
 ### Added (Item 8 — Docker Containerisation)
 
 - `docker/backend.Dockerfile` production-grade multi-stage build: builder stage now copies root `pyproject.toml` + `uv.lock*` before `backend/pyproject.toml` so `uv sync --frozen --no-dev` resolves the full locked dependency tree; production stage installs `curl` (required for the `HEALTHCHECK CMD`) via `apt-get`

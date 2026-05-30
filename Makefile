@@ -39,6 +39,15 @@ install:        ## Install all deps: uv sync (workspace) + npm install + pre-com
 	cd frontend && npx playwright install chromium
 	cd / && npm install --prefix $(CURDIR)
 	pre-commit install --hook-type commit-msg --hook-type pre-commit
+	$(MAKE) init-logs
+
+# ---------------------------------------------------------------------------
+# Log directory scaffolding
+# ---------------------------------------------------------------------------
+.PHONY: init-logs
+init-logs:      ## Create log directory tree with .gitkeep stubs (idempotent)
+	mkdir -p logs/quality logs/profiling/backend logs/profiling/tasks logs/profiling/frontend logs/profiling/test-timing
+	touch logs/quality/.gitkeep logs/profiling/backend/.gitkeep logs/profiling/tasks/.gitkeep logs/profiling/frontend/.gitkeep logs/profiling/test-timing/.gitkeep
 
 # ---------------------------------------------------------------------------
 # Development stack (Docker Compose with hot-reload)
@@ -220,6 +229,36 @@ smoke:          ## Full-stack smoke test: up → health-check → nginx-check �
 	fi
 	@echo "Smoke test passed."
 	docker compose down
+
+# ---------------------------------------------------------------------------
+# Agent quality
+# ---------------------------------------------------------------------------
+.PHONY: lint-agents
+lint-agents:    ## Validate agent frontmatter completeness and referenced paths; exits 1 on failure
+	@FAIL=0; \
+	echo "--- Checking .claude/agents/ frontmatter ---"; \
+	for f in .claude/agents/*.md; do \
+	  fm=$$(awk '/^---/{n++; if(n==2) exit; next} n==1{print}' "$$f"); \
+	  for field in name description tools; do \
+	    echo "$$fm" | grep -q "^$$field:" || { echo "FAIL $$f: missing '$$field' in frontmatter"; FAIL=1; }; \
+	  done; \
+	done; \
+	echo "--- Checking .github/agents/ frontmatter ---"; \
+	for f in .github/agents/*.agent.md; do \
+	  fm=$$(awk '/^---/{n++; if(n==2) exit; next} n==1{print}' "$$f"); \
+	  echo "$$fm" | grep -q "^description:" || { echo "FAIL $$f: missing 'description' in frontmatter"; FAIL=1; }; \
+	done; \
+	echo "--- Checking referenced paths in Quick Commands ---"; \
+	for f in .claude/agents/*.md .github/agents/*.agent.md; do \
+	  paths=$$(awk '/^```/{in_block=!in_block; next} in_block{print}' "$$f" | \
+	    grep -oE '(logs|config|docs|backend|frontend|\.github/skills)/[a-zA-Z0-9_./-]+' | \
+	    grep -v '[<>]' | sort -u); \
+	  for p in $$paths; do \
+	    base=$$(echo "$$p" | cut -d/ -f1-3); \
+	    [ -e "$$base" ] || { echo "FAIL $$f: referenced path not found: $$p (checked: $$base)"; FAIL=1; }; \
+	  done; \
+	done; \
+	[ "$$FAIL" = "0" ] && echo "All agent checks passed." || exit 1
 
 # ---------------------------------------------------------------------------
 # Code analysis

@@ -34,7 +34,7 @@ This agent is the canonical architecture-maintenance surface for the repository.
 ## Operating Rules
 
 1. **Treat the current repository as the source of truth**
-   - Review the live repository structure under `backend/app/`, `frontend/src/`, `.github/`, `docs/`, and `tests/`.
+   - Review the live repository structure under `backend/app/`, `frontend/src/`, `.github/`, `docs/`, `backend/tests/`, and `frontend/tests/`.
    - If the architecture document is stale, update it to match the current repository instead of preserving outdated descriptions.
 
 2. **Maintain the canonical documentation structure**
