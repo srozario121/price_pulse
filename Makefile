@@ -276,3 +276,10 @@ structure:      ## Show backend package tree with module counts
 	@echo "=== Module count by package ==="
 	@find backend/app -name "*.py" -not -name "__init__.py" | \
 	  sed 's|/[^/]*\.py||' | sort | uniq -c | sort -rn
+
+.PHONY: cloc
+cloc:           ## Count lines of code (requires cloc; brew install cloc)
+	cloc . \
+	  --exclude-dir=node_modules,.venv,.git,__pycache__,.mypy_cache,.ruff_cache,dist,build,htmlcov,logs \
+	  --exclude-ext=json,lock,toml \
+	  --not-match-f='coverage\.xml|\.min\.(js|css)'
