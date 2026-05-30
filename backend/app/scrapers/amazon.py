@@ -1,4 +1,5 @@
 """Amazon-specific scraper using Playwright for JavaScript-rendered pages."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -81,8 +82,13 @@ async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) ->
     except PlaywrightTimeoutError:
         logger.warning("amazon_scraper_timeout", url=url)
         return ScrapedResult(
-            url=url, html="", html_hash="", price=None, currency=None,
-            scraped_at=datetime.now(UTC), extraction_status=ExtractionStatus.HTTP_ERROR,
+            url=url,
+            html="",
+            html_hash="",
+            price=None,
+            currency=None,
+            scraped_at=datetime.now(UTC),
+            extraction_status=ExtractionStatus.HTTP_ERROR,
         )
 
     html = await page.content()  # type: ignore[attr-defined]
@@ -92,8 +98,13 @@ async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) ->
     if ld_result is None:
         logger.warning("amazon_scraper_no_ldjson", url=url)
         return ScrapedResult(
-            url=url, html=html, html_hash=html_hash, price=None, currency=None,
-            scraped_at=datetime.now(UTC), extraction_status=ExtractionStatus.EXTRACTION_FAILED,
+            url=url,
+            html=html,
+            html_hash=html_hash,
+            price=None,
+            currency=None,
+            scraped_at=datetime.now(UTC),
+            extraction_status=ExtractionStatus.EXTRACTION_FAILED,
         )
 
     return _parse_ld_result(ld_result, html, html_hash, url)
@@ -122,8 +133,13 @@ class AmazonScraper(BaseScraper):
 
             if isinstance(exc, PlaywrightTimeoutError):
                 return ScrapedResult(
-                    url=url, html="", html_hash="", price=None, currency=None,
-                    scraped_at=datetime.now(UTC), extraction_status=ExtractionStatus.HTTP_ERROR,
+                    url=url,
+                    html="",
+                    html_hash="",
+                    price=None,
+                    currency=None,
+                    scraped_at=datetime.now(UTC),
+                    extraction_status=ExtractionStatus.HTTP_ERROR,
                 )
             raise ScraperError(f"Playwright error: {exc}") from exc
         finally:

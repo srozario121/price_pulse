@@ -1,4 +1,5 @@
 """Unit tests for the notify.py helper functions introduced in the CC refactor."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,6 +10,7 @@ import pytest
 def _make_log() -> MagicMock:
     log = MagicMock()
     from app.models.notification_log import NotificationStatus
+
     log.status = NotificationStatus.pending
     return log
 
@@ -68,9 +70,7 @@ class TestDeliverWebhook:
 
         log = _make_log()
         mock_client = AsyncMock()
-        mock_client.post = AsyncMock(
-            side_effect=httpx.HTTPError("connection refused")
-        )
+        mock_client.post = AsyncMock(side_effect=httpx.HTTPError("connection refused"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -95,9 +95,7 @@ class TestDispatchChannel:
         unknown.__eq__ = lambda self, other: False
 
         alert = MagicMock()
-        await _dispatch_channel(
-            MagicMock(), MagicMock(), log, 1, {}, unknown, alert
-        )
+        await _dispatch_channel(MagicMock(), MagicMock(), log, 1, {}, unknown, alert)
         assert log.status == NotificationStatus.failed
 
 

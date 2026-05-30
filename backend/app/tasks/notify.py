@@ -94,9 +94,7 @@ async def _deliver_webhook(
         raise task.retry(exc=exc, countdown=5) from exc  # type: ignore[attr-defined]
     except httpx.HTTPError as exc:
         log.status = NotificationStatus.failed
-        logger.error(
-            "webhook_delivery_error", alert_id=alert_id, url=webhook_url, exc=str(exc)
-        )
+        logger.error("webhook_delivery_error", alert_id=alert_id, url=webhook_url, exc=str(exc))
 
 
 async def _dispatch_channel(
@@ -115,9 +113,7 @@ async def _dispatch_channel(
     elif channel == NotificationChannel.whatsapp:
         await _deliver_whatsapp(log, alert_id, alert.whatsapp_number)
     else:
-        logger.error(
-            "send_notification_unknown_channel", alert_id=alert_id, channel=str(channel)
-        )
+        logger.error("send_notification_unknown_channel", alert_id=alert_id, channel=str(channel))
         log.status = NotificationStatus.failed
 
 

@@ -131,9 +131,7 @@ class TestAlertSchema:
 class TestPriceRecordSchema:
     def test_price_record_create_valid(self):
         # Arrange / Act
-        schema = PriceRecordCreate(
-            product_id=1, price=Decimal("19.99"), currency="GBP"
-        )
+        schema = PriceRecordCreate(product_id=1, price=Decimal("19.99"), currency="GBP")
         # Assert
         assert schema.price == Decimal("19.99")
         assert schema.currency == "GBP"

@@ -1,4 +1,5 @@
 """Tests for ExtractionStatus enum."""
+
 from __future__ import annotations
 
 from app.models.enums import ExtractionStatus

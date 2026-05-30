@@ -8,6 +8,7 @@ GET    /products/{id}         → 200 ProductRead           retrieve
 PATCH  /products/{id}         → 200 ProductRead           partial update
 DELETE /products/{id}         → 204 No Content            delete + cascade
 """
+
 from __future__ import annotations
 
 import structlog

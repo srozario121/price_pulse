@@ -3,6 +3,7 @@
 Uses ``pg_async_client`` (Postgres testcontainer).
 The Celery task is mocked so tests run without a live broker.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -123,9 +124,7 @@ class TestListPrices:
     @pytest.mark.asyncio
     async def test_limit_above_100_returns_422(self, pg_async_client):
         product = await _create_product(pg_async_client)
-        resp = await pg_async_client.get(
-            f"/api/v1/products/{product['id']}/prices?limit=200"
-        )
+        resp = await pg_async_client.get(f"/api/v1/products/{product['id']}/prices?limit=200")
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
@@ -152,9 +151,7 @@ class TestTriggerScrape:
 
         with patch("app.api.v1.prices.scrape_product") as mock_scrape:
             mock_scrape.delay.return_value = mock_task
-            resp = await pg_async_client.post(
-                f"/api/v1/products/{product['id']}/scrape"
-            )
+            resp = await pg_async_client.post(f"/api/v1/products/{product['id']}/scrape")
 
         assert resp.status_code == 202
         data = resp.json()

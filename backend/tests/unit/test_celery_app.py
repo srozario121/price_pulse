@@ -1,4 +1,5 @@
 """Unit tests for the Celery application factory (celery_app.py)."""
+
 from __future__ import annotations
 
 

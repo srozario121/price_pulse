@@ -2,6 +2,7 @@
 
 No database required — pure Pydantic validation tests.
 """
+
 from datetime import datetime
 from decimal import Decimal
 
@@ -31,9 +32,7 @@ class TestPaginatedResponse:
         assert page.offset == 10
 
     def test_limit_at_100_is_valid(self):
-        page: PaginatedResponse[int] = PaginatedResponse(
-            items=[], total=0, limit=100, offset=0
-        )
+        page: PaginatedResponse[int] = PaginatedResponse(items=[], total=0, limit=100, offset=0)
         assert page.limit == 100
 
     def test_limit_above_100_rejected(self):
@@ -45,9 +44,7 @@ class TestPaginatedResponse:
     def test_pagination_arithmetic(self):
         """Seeding 25 items with limit=10 and offset=20 should yield 5 items."""
         items = list(range(5))  # 5 items in the last page
-        page: PaginatedResponse[int] = PaginatedResponse(
-            items=items, total=25, limit=10, offset=20
-        )
+        page: PaginatedResponse[int] = PaginatedResponse(items=items, total=25, limit=10, offset=20)
         assert page.total == 25
         assert len(page.items) == 5
 

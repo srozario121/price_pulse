@@ -1,4 +1,5 @@
 """Unit tests for the http_client helper functions introduced in the CC/Halstead refactor."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -142,9 +143,7 @@ class TestFetchRobotsText:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch("app.scrapers.http_client.httpx.AsyncClient", return_value=mock_client):
-            result = await _fetch_robots_text(
-                "example.com", "https://example.com/robots.txt", None
-            )
+            result = await _fetch_robots_text("example.com", "https://example.com/robots.txt", None)
 
         assert result == "User-agent: *"
 

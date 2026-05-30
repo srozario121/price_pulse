@@ -235,9 +235,7 @@ async def test_send_notification_webhook_unreachable_creates_failed_log(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_send_notification_whatsapp_creates_sent_log(
-    pg_engine, pg_session_factory
-) -> None:
+async def test_send_notification_whatsapp_creates_sent_log(pg_engine, pg_session_factory) -> None:
     """WhatsApp stub: NotificationLog status='sent', no external HTTP call."""
 
     factory = pg_session_factory

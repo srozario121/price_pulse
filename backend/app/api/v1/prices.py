@@ -5,6 +5,7 @@ Routes
 GET  /products/{id}/prices  → 200 PaginatedResponse[PriceRecordRead]  price history
 POST /products/{id}/scrape  → 202 ScrapeJobResponse                   trigger scrape job
 """
+
 from __future__ import annotations
 
 from datetime import datetime

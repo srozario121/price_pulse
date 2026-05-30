@@ -24,7 +24,10 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     # ── ENUM types ─────────────────────────────────────────────────────────────
     source_type_enum = sa.Enum(
-        "generic", "amazon", "ebay", "currys",
+        "generic",
+        "amazon",
+        "ebay",
+        "currys",
         name="source_type_enum",
     )
     source_type_enum.create(op.get_bind(), checkfirst=True)
@@ -32,14 +35,10 @@ def upgrade() -> None:
     alert_direction_enum = sa.Enum("above", "below", name="alert_direction_enum")
     alert_direction_enum.create(op.get_bind(), checkfirst=True)
 
-    notification_channel_enum = sa.Enum(
-        "email", "webhook", name="notification_channel_enum"
-    )
+    notification_channel_enum = sa.Enum("email", "webhook", name="notification_channel_enum")
     notification_channel_enum.create(op.get_bind(), checkfirst=True)
 
-    notification_status_enum = sa.Enum(
-        "pending", "sent", "failed", name="notification_status_enum"
-    )
+    notification_status_enum = sa.Enum("pending", "sent", "failed", name="notification_status_enum")
     notification_status_enum.create(op.get_bind(), checkfirst=True)
 
     # ── product ────────────────────────────────────────────────────────────────
@@ -51,7 +50,10 @@ def upgrade() -> None:
         sa.Column(
             "source_type",
             sa.Enum(
-                "generic", "amazon", "ebay", "currys",
+                "generic",
+                "amazon",
+                "ebay",
+                "currys",
                 name="source_type_enum",
                 native_enum=True,
                 create_type=False,
@@ -71,9 +73,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.Column(
-            "is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False
-        ),
+        sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("url"),
     )
@@ -97,9 +97,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("raw_html_hash", sa.String(64), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["product_id"], ["product.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["product_id"], ["product.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -112,20 +110,17 @@ def upgrade() -> None:
         sa.Column(
             "direction",
             sa.Enum(
-                "above", "below",
+                "above",
+                "below",
                 name="alert_direction_enum",
                 native_enum=True,
                 create_type=False,
             ),
             nullable=False,
         ),
-        sa.Column(
-            "is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False
-        ),
+        sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column("notified_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["product_id"], ["product.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["product_id"], ["product.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
 
@@ -137,7 +132,8 @@ def upgrade() -> None:
         sa.Column(
             "channel",
             sa.Enum(
-                "email", "webhook",
+                "email",
+                "webhook",
                 name="notification_channel_enum",
                 native_enum=True,
                 create_type=False,
@@ -154,16 +150,16 @@ def upgrade() -> None:
         sa.Column(
             "status",
             sa.Enum(
-                "pending", "sent", "failed",
+                "pending",
+                "sent",
+                "failed",
                 name="notification_status_enum",
                 native_enum=True,
                 create_type=False,
             ),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["alert_id"], ["price_alert.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["alert_id"], ["price_alert.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
 

@@ -1,4 +1,5 @@
 """NotificationLog ORM model — per-delivery audit log for alert notifications."""
+
 from __future__ import annotations
 
 import enum
@@ -28,9 +29,7 @@ class NotificationStatus(enum.StrEnum):
 
 class NotificationLog(Base):
     __tablename__ = "notification_log"
-    __table_args__ = (
-        Index("ix_notification_log_alert_sent", "alert_id", "sent_at"),
-    )
+    __table_args__ = (Index("ix_notification_log_alert_sent", "alert_id", "sent_at"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     alert_id: Mapped[int] = mapped_column(
@@ -53,7 +52,4 @@ class NotificationLog(Base):
     alert: Mapped[PriceAlert] = relationship("PriceAlert", back_populates="notification_logs")
 
     def __repr__(self) -> str:
-        return (
-            f"<NotificationLog id={self.id!r} alert_id={self.alert_id!r} "
-            f"status={self.status!r}>"
-        )
+        return f"<NotificationLog id={self.id!r} alert_id={self.alert_id!r} status={self.status!r}>"

@@ -4,6 +4,7 @@ Uses pg_session (Postgres testcontainer) so native ENUMs work.
 Calls route functions directly — bypassing ASGITransport — so that
 pytest-cov captures the coroutine bodies on Python 3.13.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -220,9 +221,7 @@ class TestProductRouteDirect:
         pg_session.add(p2)
         await pg_session.flush()
 
-        result = await list_products(
-            is_active=True, limit=10, offset=0, db=pg_session
-        )
+        result = await list_products(is_active=True, limit=10, offset=0, db=pg_session)
         names = [p.name for p in result.items]
         assert "Active" in names
         assert "Inactive" not in names

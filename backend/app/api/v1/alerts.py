@@ -14,6 +14,7 @@ Design notes
   so passing it in a PATCH body returns 422.
 - Ordered by ``id ASC`` (insertion order) — alerts have no natural recency ordering.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -59,9 +60,7 @@ async def create_alert(
     db: AsyncSession = Depends(get_db),
 ) -> PriceAlert:
     # Verify the referenced product exists
-    product_exists = await db.scalar(
-        select(Product.id).where(Product.id == body.product_id)
-    )
+    product_exists = await db.scalar(select(Product.id).where(Product.id == body.product_id))
     if product_exists is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -98,11 +97,7 @@ async def list_alerts(
     total = await db.scalar(select(func.count(PriceAlert.id)).where(*filters)) or 0
 
     result = await db.execute(
-        select(PriceAlert)
-        .where(*filters)
-        .order_by(PriceAlert.id.asc())
-        .limit(limit)
-        .offset(offset)
+        select(PriceAlert).where(*filters).order_by(PriceAlert.id.asc()).limit(limit).offset(offset)
     )
     items = [AlertRead.model_validate(a) for a in result.scalars().all()]
 

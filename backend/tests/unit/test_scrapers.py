@@ -1,4 +1,5 @@
 """Unit tests for scraper layer — BaseScraper, GenericScraper, AmazonScraper, registry."""
+
 from __future__ import annotations
 
 import hashlib

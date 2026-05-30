@@ -1,4 +1,5 @@
 """Registry mapping source_type strings to scraper classes."""
+
 from __future__ import annotations
 
 import enum
@@ -31,14 +32,10 @@ def get_scraper(source_type: str, **kwargs: object) -> BaseScraper:
     try:
         st = SourceType(source_type)
     except ValueError as exc:
-        raise UnknownSourceError(
-            f"No scraper registered for source_type={source_type!r}"
-        ) from exc
+        raise UnknownSourceError(f"No scraper registered for source_type={source_type!r}") from exc
 
     scraper_cls = _REGISTRY.get(st)
     if scraper_cls is None:
-        raise UnknownSourceError(
-            f"No scraper registered for source_type={source_type!r}"
-        )
+        raise UnknownSourceError(f"No scraper registered for source_type={source_type!r}")
 
     return scraper_cls(**kwargs)

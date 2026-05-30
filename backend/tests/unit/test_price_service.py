@@ -1,4 +1,5 @@
 """Unit tests for price_service.record_price."""
+
 from __future__ import annotations
 
 from datetime import datetime

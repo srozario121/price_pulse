@@ -1,4 +1,5 @@
 """Integration tests for price_service and alert_service against Postgres."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta

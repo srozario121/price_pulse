@@ -1,4 +1,5 @@
 """Common Pydantic schemas shared across all API v1 endpoints."""
+
 from typing import Literal
 
 from pydantic import BaseModel, field_validator

@@ -145,16 +145,12 @@ class TestRelationships:
     async def test_product_price_records_relationship(self, pg_session: AsyncSession):
         # Arrange
         product = await _make_product(pg_session)
-        record = PriceRecord(
-            product_id=product.id, price=Decimal("15.00"), currency="GBP"
-        )
+        record = PriceRecord(product_id=product.id, price=Decimal("15.00"), currency="GBP")
         pg_session.add(record)
         await pg_session.flush()
 
         # Act — re-fetch product and load relationship
-        result = await pg_session.execute(
-            select(Product).where(Product.id == product.id)
-        )
+        result = await pg_session.execute(select(Product).where(Product.id == product.id))
         fetched = result.scalar_one()
         await pg_session.refresh(fetched, ["price_records"])
 
@@ -199,9 +195,7 @@ class TestCascadeDelete:
         await pg_session.flush()
 
         # Assert — all child rows removed
-        assert (
-            await pg_session.get(PriceRecord, record_id)
-        ) is None
+        assert (await pg_session.get(PriceRecord, record_id)) is None
         assert (await pg_session.get(PriceAlert, alert_id)) is None
         assert (await pg_session.get(NotificationLog, log_id)) is None
 
@@ -270,9 +264,7 @@ class TestConstraintViolations:
         with pytest.raises(IntegrityError):
             await pg_session.flush()
 
-    async def test_duplicate_product_url_raises_integrity_error(
-        self, pg_session: AsyncSession
-    ):
+    async def test_duplicate_product_url_raises_integrity_error(self, pg_session: AsyncSession):
         # Arrange
         url = "https://example.com/duplicate"
         p1 = Product(name="P1", url=url, source_type=SourceType.generic)
@@ -283,9 +275,7 @@ class TestConstraintViolations:
         with pytest.raises(IntegrityError):
             await pg_session.flush()
 
-    async def test_price_record_with_null_price_is_allowed(
-        self, pg_session: AsyncSession
-    ):
+    async def test_price_record_with_null_price_is_allowed(self, pg_session: AsyncSession):
         """Item 4 made price nullable to store failed-scrape records.
         NULL price is now a valid state (extraction_status='http_error').
         """

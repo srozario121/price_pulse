@@ -1,4 +1,5 @@
 """Alert evaluation service — checks price thresholds and dispatches notifications."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta

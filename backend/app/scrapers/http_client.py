@@ -1,4 +1,5 @@
 """Shared async HTTP client with retry, rate-limiting, and robots.txt support."""
+
 from __future__ import annotations
 
 import asyncio
@@ -170,7 +171,9 @@ async def fetch_page(url: str, redis_client: object | None = None) -> ScrapedRes
                 logger.warning("http_429_rate_limited", url=url, attempt=attempt, retry_after=delay)
             else:
                 delay = _RETRY_BACK_OFF[min(attempt, len(_RETRY_BACK_OFF) - 1)]
-                logger.warning("http_error_retrying", url=url, status=status, attempt=attempt, delay=delay)
+                logger.warning(
+                    "http_error_retrying", url=url, status=status, attempt=attempt, delay=delay
+                )
 
             await asyncio.sleep(delay)
             headers = {"User-Agent": random.choice(_USER_AGENTS)}
@@ -178,7 +181,9 @@ async def fetch_page(url: str, redis_client: object | None = None) -> ScrapedRes
         except httpx.RequestError as exc:
             last_exc = exc
             delay = _RETRY_BACK_OFF[min(attempt, len(_RETRY_BACK_OFF) - 1)]
-            logger.warning("http_request_error", url=url, attempt=attempt, error=str(exc), delay=delay)
+            logger.warning(
+                "http_request_error", url=url, attempt=attempt, error=str(exc), delay=delay
+            )
             await asyncio.sleep(delay)
 
     logger.error("http_all_retries_exhausted", url=url, last_error=str(last_exc))

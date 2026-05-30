@@ -42,9 +42,7 @@ def register_product_schedule(product_id: int, interval_minutes: int) -> None:
     Raises ValueError if interval_minutes < 1.
     """
     if interval_minutes < 1:
-        raise ValueError(
-            f"interval_minutes must be >= 1, got {interval_minutes}"
-        )
+        raise ValueError(f"interval_minutes must be >= 1, got {interval_minutes}")
 
     key = _schedule_key(product_id)
     interval = timedelta(minutes=interval_minutes)
@@ -73,9 +71,7 @@ def deregister_product_schedule(product_id: int) -> None:
     """
     key = _schedule_key(product_id)
     try:
-        entry = RedBeatSchedulerEntry.from_key(
-            f"redbeat:{key}", app=celery_app
-        )
+        entry = RedBeatSchedulerEntry.from_key(f"redbeat:{key}", app=celery_app)
         entry.delete()
         logger.info("product_schedule_deregistered", product_id=product_id, key=key)
     except KeyError:

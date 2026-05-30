@@ -2,6 +2,7 @@
 
 Uses ``pg_async_client`` (Postgres testcontainer).
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -118,9 +119,7 @@ class TestListAlerts:
     async def test_filter_by_is_active(self, pg_async_client):
         product = await _create_product(pg_async_client, url_suffix="active-filter")
         active_alert = await _create_alert(pg_async_client, product["id"])
-        inactive_alert = await _create_alert(
-            pg_async_client, product["id"], is_active=False
-        )
+        inactive_alert = await _create_alert(pg_async_client, product["id"], is_active=False)
 
         resp = await pg_async_client.get("/api/v1/alerts?is_active=false")
         assert resp.status_code == 200
@@ -188,9 +187,7 @@ class TestUpdateAlert:
 
     @pytest.mark.asyncio
     async def test_patch_nonexistent_returns_404(self, pg_async_client):
-        resp = await pg_async_client.patch(
-            "/api/v1/alerts/99999", json={"is_active": False}
-        )
+        resp = await pg_async_client.patch("/api/v1/alerts/99999", json={"is_active": False})
         assert resp.status_code == 404
 
     @pytest.mark.asyncio

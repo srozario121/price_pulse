@@ -1,4 +1,5 @@
 """Extra unit tests to cover scrape.py exception/retry branches."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch

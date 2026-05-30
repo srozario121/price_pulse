@@ -1,4 +1,5 @@
 """Extra unit tests to cover schedule.py branches missed by existing tests."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch

@@ -1,4 +1,5 @@
 """Price service — deduplication, persistence, and alert evaluation trigger."""
+
 from __future__ import annotations
 
 import structlog

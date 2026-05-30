@@ -1,4 +1,5 @@
 """Unit tests for alert_service.evaluate_alerts."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -138,9 +139,7 @@ async def test_evaluate_alerts_extraction_failed() -> None:
     """extraction_status=extraction_failed → early return, no notification."""
     from app.services import alert_service
 
-    record = _make_price_record(
-        price=None, extraction_status=ExtractionStatus.EXTRACTION_FAILED
-    )
+    record = _make_price_record(price=None, extraction_status=ExtractionStatus.EXTRACTION_FAILED)
     price_execute = AsyncMock()
     price_execute.scalar_one_or_none = MagicMock(return_value=record)
 

@@ -1,4 +1,5 @@
 """CSS-selector-driven generic scraper adapter."""
+
 from __future__ import annotations
 
 import re
