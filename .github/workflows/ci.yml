@@ -326,7 +326,7 @@ jobs:
         working-directory: backend
 
       - name: Scan Python deps for CRITICAL CVEs
-        run: uv run pip-audit
+        run: uv run pip-audit --fail-on CRITICAL
         working-directory: backend
 
       - name: Set up Node.js
