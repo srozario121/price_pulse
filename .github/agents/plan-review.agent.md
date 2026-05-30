@@ -1,5 +1,5 @@
 ---
-description: Inspect a TODO.md item, explore the codebase to surface design gaps, ask the user targeted questions to refine scope, then update TODO.md with resolved decisions and log findings to the plan-review skill.
+description: Inspect a TODO.md item, explore the codebase to surface design gaps, ask the user targeted questions to refine scope, then update TODO.md with resolved decisions and log findings to the plan-review skill. Every plan it produces mandates a worktree-first, PR-only delivery workflow.
 ---
 
 ## User Input
@@ -96,6 +96,21 @@ Rewrite the target TODO.md section in place. Preserve:
 
 Add or update:
 
+0. A `### Implementation workflow` sub-section as the **very first block** — before Design decisions, Tasks, or anything else. Use this exact template (substitute `<n>` with the item number):
+
+   ```markdown
+   ### Implementation workflow (mandatory — complete in order)
+
+   1. [ ] Create an isolated git worktree before writing any code:
+          `git worktree add ../pp-item-<n> -b feat/item-<n>`
+   2. [ ] Implement every task below inside that worktree — never directly on `main`.
+   3. [ ] All quality gates must pass before opening a PR:
+          `make test` exits 0 and `make quality` exits 0
+          (see `CONTRIBUTING.md` → Pull Request Checklist).
+   4. [ ] Raise a Pull Request: `gh pr create`
+          **No direct commits to the default branch (`main`) are permitted.**
+   ```
+
 1. A `### Design decisions (resolved)` sub-section listing every decision made during the question loop: **Decision topic**: resolved value + one-line rationale.
 2. Any new tasks implied by the resolved decisions.
 3. Remove or reword tasks revealed to be wrong, duplicated, or out of scope.
@@ -156,3 +171,4 @@ Findings log: .github/skills/plan-review/findings.md (appended)
 - **Documentation is mandatory** — every rewritten TODO.md item must include a `### Documentation` sub-section.
 - **One item at a time** — if the user input names multiple items, process the first and ask before continuing.
 - **Large file reads** — for files > 200 lines, use tree-sitter to map structure first, then read only relevant sections.
+- **Worktree-first delivery** — every rewritten plan must open with the mandatory `### Implementation workflow` block: create a git worktree → implement → quality gates pass (`make test` and `make quality`) → raise a PR via `gh pr create`. Never permit direct commits to the default branch (`main`).
