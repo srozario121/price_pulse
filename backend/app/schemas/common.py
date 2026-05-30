@@ -1,14 +1,12 @@
 """Common Pydantic schemas shared across all API v1 endpoints."""
-from typing import Generic, Literal, TypeVar
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
 from app.schemas.product import ProductRead
 
-T = TypeVar("T")
 
-
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     """Typed pagination envelope returned by every list endpoint.
 
     ``total`` is the count of all matching records before pagination.

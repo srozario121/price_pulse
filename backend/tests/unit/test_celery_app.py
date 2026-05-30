@@ -28,10 +28,10 @@ def test_hard_time_limit() -> None:
     assert celery_app.conf.task_time_limit == 150
 
 
-def test_worker_pool_is_asyncio() -> None:
+def test_worker_pool_is_solo() -> None:
     from app.workers.celery_app import celery_app
 
-    assert celery_app.conf.worker_pool == "celery.concurrency.aio:TaskPool"
+    assert celery_app.conf.worker_pool == "solo"
 
 
 def test_redbeat_redis_url() -> None:

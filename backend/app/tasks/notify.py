@@ -154,7 +154,7 @@ async def send_notification(self: object, alert_id: int) -> None:  # type: ignor
                             url=webhook_url,
                         )
                         await session.commit()
-                        raise self.retry(exc=exc, countdown=5)  # type: ignore[attr-defined]
+                        raise self.retry(exc=exc, countdown=5) from exc  # type: ignore[attr-defined]
                     except httpx.HTTPError as exc:
                         # Connection error, DNS failure, etc.: fail immediately, no retry
                         log.status = NotificationStatus.failed

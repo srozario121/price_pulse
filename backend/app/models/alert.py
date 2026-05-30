@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.notification_log import NotificationLog, NotificationChannel
+    from app.models.notification_log import NotificationLog
     from app.models.product import Product
 
 
