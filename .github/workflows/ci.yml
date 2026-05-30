@@ -259,8 +259,23 @@ jobs:
             exit 1
           fi
 
-      - name: Check nginx health endpoint
-        run: curl -sf http://localhost/nginx-health
+      - name: Wait for nginx health (60s timeout)
+        run: |
+          success=false
+          for i in $(seq 1 12); do
+            if curl -sf http://localhost/nginx-health > /dev/null 2>&1; then
+              echo "Nginx healthy after $((i * 5))s"
+              success=true
+              break
+            fi
+            echo "Attempt $i/12 — not ready, sleeping 5s..."
+            sleep 5
+          done
+          if [ "$success" = "false" ]; then
+            echo "ERROR: nginx did not become healthy within 60s"
+            docker compose logs frontend
+            exit 1
+          fi
 
       - name: Check frontend SPA shell
         run: curl -sf http://localhost/ | grep -q '<div id="root">'
@@ -325,8 +340,8 @@ jobs:
         run: uv sync --group dev
         working-directory: backend
 
-      - name: Scan Python deps for CRITICAL CVEs
-        run: uv run pip-audit --fail-on CRITICAL
+      - name: Scan Python deps for CVEs
+        run: uv run pip-audit
         working-directory: backend
 
       - name: Set up Node.js
