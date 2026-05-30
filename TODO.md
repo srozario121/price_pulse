@@ -1067,6 +1067,20 @@ Cross-tier overlap (a unit test and an integration test covering the same line) 
 
 ---
 
+## 12. Quality Issue Fixes (PR #1 pre-merge)
+
+Address quality gate failures surfaced when CI runs against PR #1 (`feat/item-11-plan-review`). This item tracks any lint, test, type-check, or threshold violations that must be resolved before the branch can be merged to `main`.
+
+**Depends on**: PR #1 CI run completing and reporting failures.
+
+### Tasks
+
+- [ ] Review CI results for PR #1 and list all failing jobs (lint, test-backend, test-frontend, build, security, agent-quality)
+- [ ] Fix each failing check and push fixup commits to `feat/item-11-plan-review`
+- [ ] Confirm all required status checks pass before converting PR #1 from draft to ready for review
+
+---
+
 ## References
 
 - FastAPI docs: https://fastapi.tiangolo.com/
