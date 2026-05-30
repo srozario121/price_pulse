@@ -914,24 +914,24 @@ Wire the complete GitHub Actions pipeline, enforce quality thresholds locally an
 - [x] Frontend vitest coverage thresholds — 80% branches/functions/lines/statements enforced via `vite.config.ts` `coverage.thresholds.global` (already complete)
 
 **Quality gate script**
-- [ ] Create `backend/scripts/` directory (non-package — no `__init__.py`)
-- [ ] Create `backend/scripts/check_quality.py` — reads `config/quality-thresholds.toml` (via `tomllib`; path resolved as `Path(__file__).resolve().parents[2] / "config/quality-thresholds.toml"`); loads radon CC JSON from the most recent `logs/quality/<timestamp>/cc.json` and computes P95 of all function scores; loads MI JSON and computes P5 of all module scores; loads Halstead JSON and computes P95 of all function effort scores; loads `backend/coverage.xml` (path `Path(__file__).resolve().parent.parent / "coverage.xml"`) via `xml.etree.ElementTree` and extracts `line-rate` attribute; exits 0 if all thresholds pass; exits 1 and prints a table listing each failing metric (actual value, threshold, delta); when `os.environ.get("GITHUB_ACTIONS") == "true"`, appends a markdown `| Check | Value | Threshold | Status |` table to `$GITHUB_STEP_SUMMARY` covering all four checks
+- [x] Create `backend/scripts/` directory (non-package — no `__init__.py`)
+- [x] Create `backend/scripts/check_quality.py` — reads `config/quality-thresholds.toml` (via `tomllib`; path resolved as `Path(__file__).resolve().parents[2] / "config/quality-thresholds.toml"`); loads radon CC JSON from the most recent `logs/quality/<timestamp>/cc.json` and computes P95 of all function scores; loads MI JSON and computes P5 of all module scores; loads Halstead JSON and computes P95 of all function effort scores; loads `backend/coverage.xml` (path `Path(__file__).resolve().parent.parent / "coverage.xml"`) via `xml.etree.ElementTree` and extracts `line-rate` attribute; exits 0 if all thresholds pass; exits 1 and prints a table listing each failing metric (actual value, threshold, delta); when `os.environ.get("GITHUB_ACTIONS") == "true"`, appends a markdown `| Check | Value | Threshold | Status |` table to `$GITHUB_STEP_SUMMARY` covering all four checks
 
 **Backend pytest enforcement**
-- [ ] Add `--cov-fail-under=90` to `addopts` in `[tool.pytest.ini_options]` in `backend/pyproject.toml` so that any `uv run pytest --cov=app` run fails when backend line coverage drops below 90%
+- [x] Add `--cov-fail-under=90` to `addopts` in `[tool.pytest.ini_options]` in `backend/pyproject.toml` so that any `uv run pytest --cov=app` run fails when backend line coverage drops below 90%
 
 **`make quality` update**
-- [ ] Update `make quality` Makefile target: (1) run `cd backend && uv run pytest --cov=app --cov-report=xml:coverage.xml --cov-report=term-missing -m "not live_api" -q` to generate coverage data; (2) run radon CC/MI/Halstead JSON reports into `logs/quality/$$TIMESTAMP/` as before; (3) run `cd frontend && npm run test:coverage`; (4) run `cd backend && uv run python scripts/check_quality.py`; remove all `|| true` guards; exit code from final step propagates; update `## help` description in Makefile to read "Run full quality gate: pytest + radon + vitest; exits 1 on threshold violation"
+- [x] Update `make quality` Makefile target: (1) run `cd backend && uv run pytest --cov=app --cov-report=xml:coverage.xml --cov-report=term-missing -m "not live_api" -q` to generate coverage data; (2) run radon CC/MI/Halstead JSON reports into `logs/quality/$$TIMESTAMP/` as before; (3) run `cd frontend && npm run test:coverage`; (4) run `cd backend && uv run python scripts/check_quality.py`; remove all `|| true` guards; exit code from final step propagates; update `## help` description in Makefile to read "Run full quality gate: pytest + radon + vitest; exits 1 on threshold violation"
 
 **Security scanning**
-- [ ] Add `pip-audit>=2.7` to `[dependency-groups] dev` in `backend/pyproject.toml`
-- [ ] Add `security` job to `.github/workflows/ci.yml` — runs in parallel with existing jobs (no `needs:` dependency); steps: (1) `actions/checkout@v4`, (2) `astral-sh/setup-uv@v3`, (3) `uv sync --group dev` in `backend/`, (4) `uv run pip-audit --fail-on CRITICAL` — exits 1 on any CRITICAL Python CVE; (5) `actions/setup-node@v4` (Node 20), (6) `npm ci` in `frontend/`, (7) `npm audit --audit-level=critical` — exits 1 on any CRITICAL JS CVE
+- [x] Add `pip-audit>=2.7` to `[dependency-groups] dev` in `backend/pyproject.toml`
+- [x] Add `security` job to `.github/workflows/ci.yml` — runs in parallel with existing jobs (no `needs:` dependency); steps: (1) `actions/checkout@v4`, (2) `astral-sh/setup-uv@v3`, (3) `uv sync --group dev` in `backend/`, (4) `uv run pip-audit --fail-on CRITICAL` — exits 1 on any CRITICAL Python CVE; (5) `actions/setup-node@v4` (Node 20), (6) `npm ci` in `frontend/`, (7) `npm audit --audit-level=critical` — exits 1 on any CRITICAL JS CVE
 
 **CI corrections**
-- [ ] Update `test-backend` job in `.github/workflows/ci.yml`: change postgres service image from `postgres:15-alpine` to `postgres:16-alpine` to match `docker-compose.yml` and testcontainers version
+- [x] Update `test-backend` job in `.github/workflows/ci.yml`: change postgres service image from `postgres:15-alpine` to `postgres:16-alpine` to match `docker-compose.yml` and testcontainers version
 
 **Branch protection (manual prerequisite)**
-- [ ] Document in `CONTRIBUTING.md` under a new `## Repository Settings` section: enable branch protection for `main` in GitHub → Settings → Branches → Add rule; required status checks: `Lint`, `Test — Backend`, `Test — Frontend`, `Build — Docker images`, `Security`; enable "Require branches to be up to date before merging"; enable "Require status checks to pass before merging"; add `smoke`, `agent-quality` to required checks once items 8 and 9 are complete
+- [x] Document in `CONTRIBUTING.md` under a new `## Repository Settings` section: enable branch protection for `main` in GitHub → Settings → Branches → Add rule; required status checks: `Lint`, `Test — Backend`, `Test — Frontend`, `Build — Docker images`, `Security`; enable "Require branches to be up to date before merging"; enable "Require status checks to pass before merging"; add `smoke`, `agent-quality` to required checks once items 8 and 9 are complete
 
 ### Test strategy
 

@@ -118,18 +118,21 @@ format:         ## Format backend (ruff format) and frontend (prettier)
 # Quality gates
 # ---------------------------------------------------------------------------
 .PHONY: quality
-quality:        ## Run full quality report: radon (backend) + vitest coverage (frontend)
+quality:        ## Run full quality gate: pytest + radon + vitest; exits 1 on threshold violation
 	@mkdir -p logs/quality
 	@TIMESTAMP=$$(date +%Y%m%dT%H%M%S); \
 	  REPORT_DIR=logs/quality/$$TIMESTAMP; \
 	  mkdir -p $$REPORT_DIR; \
-	  echo "=== Backend complexity ===" | tee $$REPORT_DIR/backend.txt; \
-	  cd backend && uv run radon cc app -a -s --json > ../$$REPORT_DIR/cc.json 2>&1 || true; \
-	  uv run radon mi app -s --json > ../$$REPORT_DIR/mi.json 2>&1 || true; \
-	  uv run radon hal app --json > ../$$REPORT_DIR/hal.json 2>&1 || true; \
-	  echo "Quality report saved to $$REPORT_DIR"
-	@echo "=== Frontend coverage ==="
-	cd frontend && npm run test:coverage || true
+	  echo "=== Backend tests + coverage ==="; \
+	  cd backend && uv run pytest --cov=app --cov-report=xml:coverage.xml --cov-report=term-missing -m "not live_api" -q; \
+	  echo "=== Backend complexity ==="; \
+	  uv run radon cc app -a -s --json > ../$$REPORT_DIR/cc.json 2>&1; \
+	  uv run radon mi app -s --json > ../$$REPORT_DIR/mi.json 2>&1; \
+	  uv run radon hal app --json > ../$$REPORT_DIR/hal.json 2>&1; \
+	  echo "Quality report saved to $$REPORT_DIR"; \
+	  echo "=== Frontend coverage ==="; \
+	  cd ../frontend && npm run test:coverage; \
+	  cd ../backend && uv run python scripts/check_quality.py
 
 # ---------------------------------------------------------------------------
 # Database migrations

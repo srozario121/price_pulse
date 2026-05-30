@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+### Added (Item 10 — CI/CD & Quality Gates)
+
+- `backend/scripts/check_quality.py`: quality threshold enforcement script — reads radon CC/MI/Halstead JSON from the most recent `logs/quality/<timestamp>/` directory and `backend/coverage.xml`; exits 1 with a violation table when any threshold in `config/quality-thresholds.toml` is breached; when `GITHUB_ACTIONS=true`, appends a markdown `| Check | Value | Threshold | Status |` table with ✅/❌ indicators to `$GITHUB_STEP_SUMMARY`
+- `backend/pyproject.toml`: added `pip-audit>=2.7` to `[dependency-groups] dev`; added `--cov-fail-under=90` to `addopts` so any direct `uv run pytest --cov=app` run fails when backend coverage drops below 90%
+- `make quality` updated: now runs `pytest --cov=app --cov-report=xml:coverage.xml` first, then radon CC/MI/Halstead, then `npm run test:coverage`, then `check_quality.py`; all `|| true` guards removed; exits 1 on any threshold violation
+- CI `security` job: runs in parallel with all other jobs; scans Python deps with `uv run pip-audit --fail-on CRITICAL` and Node.js deps with `npm audit --audit-level=critical`; fails the build on any CRITICAL CVE
+- CI `test-backend` job: postgres service image updated from `postgres:15-alpine` to `postgres:16-alpine` to match `docker-compose.yml` and `testcontainers[postgres]` version
+- `CONTRIBUTING.md`: added `## Repository Settings` section documenting required branch protection configuration for `main` (status checks: `Lint`, `Test — Backend`, `Test — Frontend`, `Build — Docker images`, `Security`, `Smoke`, `Agent quality`)
+
 ### Added (Item 9 — Claude Code Agents)
 
 - `docs/architecture/repository-architecture.md`: rewritten from scaffold stub to full C4 doc — C1 system context, C2 container diagram (Postgres 16, celery-playwright container), C3 backend component diagram (all six layers), module domain-grouping convention, ASCII ER diagram for all four ORM tables, ADR index table

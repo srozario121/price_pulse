@@ -175,6 +175,30 @@ Backend tests in `backend/tests/`:
 
 ---
 
+## Repository Settings
+
+Branch protection for `main` must be configured manually in GitHub → **Settings → Branches → Add rule** after the repository is created.
+
+Required status checks (all must pass before merging):
+
+| Check name | Job |
+| --- | --- |
+| `Lint` | `lint` |
+| `Test — Backend` | `test-backend` |
+| `Test — Frontend` | `test-frontend` |
+| `Build — Docker images` | `build` |
+| `Security — dependency CVE scan` | `security` |
+| `Smoke — Full-stack health check` | `smoke` |
+| `Agent quality — frontmatter + path validation` | `agent-quality` |
+
+Also enable:
+
+- **Require branches to be up to date before merging**
+- **Require status checks to pass before merging**
+- **Do not allow bypassing the above settings** (recommended for team repos)
+
+---
+
 ## Questions?
 
 Open an issue or ping in the project discussion board.
