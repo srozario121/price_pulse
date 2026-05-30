@@ -41,4 +41,4 @@ def get_scraper(source_type: str, **kwargs: object) -> BaseScraper:
             f"No scraper registered for source_type={source_type!r}"
         )
 
-    return scraper_cls(**kwargs)  # type: ignore[arg-type]
+    return scraper_cls(**kwargs)

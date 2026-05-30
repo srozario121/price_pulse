@@ -23,6 +23,26 @@ _CURRENCY_SYMBOL_MAP: dict[str, str] = {
 }
 
 
+def _resolve_currency(selector: object, css_selector_currency: str | None) -> str:
+    """Extract currency from *html* using *css_selector_currency*, defaulting to USD."""
+    if css_selector_currency is None:
+        return "USD"
+    text_selector = (
+        css_selector_currency
+        if "::text" in css_selector_currency
+        else f"{css_selector_currency} ::text"
+    )
+    currency_text = selector.css(text_selector).get()  # type: ignore[attr-defined]
+    if currency_text is None:
+        currency_text = selector.css(  # type: ignore[attr-defined]
+            css_selector_currency.rstrip() + "::text"
+        ).get()
+    if currency_text is not None:
+        symbol = currency_text.strip()
+        return _CURRENCY_SYMBOL_MAP.get(symbol, symbol) or "USD"
+    return "USD"
+
+
 class GenericScraper(BaseScraper):
     """Scraper driven by CSS selectors stored on the Product record."""
 
@@ -49,7 +69,7 @@ class GenericScraper(BaseScraper):
         html_hash = self._compute_hash(result.html)
 
         # Lazy import to keep module testable with simple mocking
-        from parsel import Selector  # type: ignore[import-untyped]
+        from parsel import Selector
 
         selector = Selector(text=result.html)
         raw_price_text = selector.css(self.css_selector).get()
@@ -70,7 +90,6 @@ class GenericScraper(BaseScraper):
                 extraction_status=ExtractionStatus.EXTRACTION_FAILED,
             )
 
-        # Strip everything except digits, decimal point, and minus sign
         cleaned = re.sub(r"[^\d.\-]", "", raw_price_text.strip())
         try:
             price = Decimal(cleaned)
@@ -91,28 +110,7 @@ class GenericScraper(BaseScraper):
                 extraction_status=ExtractionStatus.EXTRACTION_FAILED,
             )
 
-        # Currency extraction — append ::text to extract text content not outer HTML
-        currency: str | None = None
-        if self.css_selector_currency is not None:
-            # Support selectors that already have ::text and those that don't
-            text_selector = (
-                self.css_selector_currency
-                if "::text" in self.css_selector_currency
-                else f"{self.css_selector_currency} ::text"
-            )
-            currency_text = selector.css(text_selector).get()
-            if currency_text is None:
-                # Try without the space (direct child text)
-                currency_text = selector.css(
-                    self.css_selector_currency.rstrip() + "::text"
-                ).get()
-            if currency_text is not None:
-                symbol = currency_text.strip()
-                currency = _CURRENCY_SYMBOL_MAP.get(symbol, symbol) or "USD"
-            else:
-                currency = "USD"
-        else:
-            currency = "USD"
+        currency = _resolve_currency(selector, self.css_selector_currency)
 
         return ScrapedResult(
             url=url,

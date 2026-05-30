@@ -74,7 +74,7 @@ async def list_prices(
         .limit(limit)
         .offset(offset)
     )
-    items = list(result.scalars().all())
+    items = [PriceRecordRead.model_validate(r) for r in result.scalars().all()]
 
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 

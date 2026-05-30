@@ -22,8 +22,8 @@ import asyncio
 from datetime import timedelta
 
 import structlog
-from celery.signals import worker_ready  # type: ignore[import-untyped]
-from redbeat import RedBeatSchedulerEntry  # type: ignore[import-untyped]
+from celery.signals import worker_ready
+from redbeat import RedBeatSchedulerEntry
 
 from app.workers.celery_app import celery_app
 
@@ -114,7 +114,7 @@ def startup_sync_schedules() -> None:
     asyncio.run(_sync_schedules_async())
 
 
-@worker_ready.connect
+@worker_ready.connect  # type: ignore[untyped-decorator]
 def on_worker_ready(**_kwargs: object) -> None:  # noqa: ANN003
     """Signal handler: sync schedules when any worker comes online."""
     logger.info("worker_ready_signal_received")

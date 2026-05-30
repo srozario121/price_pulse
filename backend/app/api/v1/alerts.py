@@ -104,7 +104,7 @@ async def list_alerts(
         .limit(limit)
         .offset(offset)
     )
-    items = list(result.scalars().all())
+    items = [AlertRead.model_validate(a) for a in result.scalars().all()]
 
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 

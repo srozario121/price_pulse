@@ -24,13 +24,13 @@ from app.workers.celery_app import celery_app
 logger = structlog.get_logger()
 
 
-@celery_app.task(
+@celery_app.task(  # type: ignore[untyped-decorator]
     bind=True,
     name="app.tasks.scrape.scrape_product",
     max_retries=3,
     acks_late=True,
 )
-async def scrape_product(self: object, product_id: int) -> str:  # type: ignore[misc]
+async def scrape_product(self: object, product_id: int) -> str:
     """Fetch and store the current price for *product_id*.
 
     Returns the extraction_status string of the resulting PriceRecord.
