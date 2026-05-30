@@ -99,7 +99,6 @@ async def test_send_notification_email_stub() -> None:
 @pytest.mark.asyncio
 async def test_send_notification_webhook_success() -> None:
     """Webhook channel: httpx.post called, status='sent' on 2xx."""
-    import httpx
 
     from app.tasks.notify import send_notification
 

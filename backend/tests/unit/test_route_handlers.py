@@ -11,7 +11,6 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -304,6 +303,7 @@ class TestPricesRouteDirect:
     @pytest.mark.asyncio
     async def test_list_prices_with_records(self, pg_session) -> None:
         from datetime import UTC, datetime
+
         from app.api.v1.prices import list_prices
         from app.models.price_history import PriceRecord
 
@@ -332,7 +332,8 @@ class TestPricesRouteDirect:
 
     @pytest.mark.asyncio
     async def test_list_prices_with_date_filters(self, pg_session) -> None:
-        from datetime import UTC, datetime, timedelta
+        from datetime import UTC, datetime
+
         from app.api.v1.prices import list_prices
         from app.models.price_history import PriceRecord
 
@@ -392,6 +393,7 @@ class TestPricesRouteDirect:
     @pytest.mark.asyncio
     async def test_trigger_scrape_queues_task(self, pg_session) -> None:
         from unittest.mock import MagicMock, patch
+
         from app.api.v1.prices import trigger_scrape
 
         product = await _create_product(pg_session)

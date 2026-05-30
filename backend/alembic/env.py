@@ -11,10 +11,11 @@ Auto-import all ORM models below the `# ── Models` comment so that
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from alembic import context
 
 # ── App imports ───────────────────────────────────────────────────────────────
 from app.core.config import settings
@@ -22,7 +23,7 @@ from app.core.database import Base
 
 # ── Models — import every module so Alembic sees all mapped tables ─────────────
 # (populate this list as models are added in item 3)
-from app.models import product, price_history, alert, notification_log  # noqa: F401
+from app.models import alert, notification_log, price_history, product  # noqa: F401
 
 # ── Alembic config ─────────────────────────────────────────────────────────────
 config = context.config

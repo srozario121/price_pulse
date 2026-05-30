@@ -8,7 +8,6 @@ from decimal import Decimal
 
 import pytest
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 PRODUCT_PAYLOAD = {

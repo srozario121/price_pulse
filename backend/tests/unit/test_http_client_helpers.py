@@ -69,8 +69,9 @@ class TestFetchRobotsText:
 
     @pytest.mark.asyncio
     async def test_http_exception_returns_empty(self) -> None:
-        from app.scrapers.http_client import _fetch_robots_text
         import httpx
+
+        from app.scrapers.http_client import _fetch_robots_text
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("timeout"))
@@ -233,8 +234,8 @@ class TestApplyRateLimit:
 
 class TestResultForStatus:
     def test_200_returns_scraped_result(self) -> None:
-        from app.scrapers.http_client import _result_for_status
         from app.models.enums import ExtractionStatus
+        from app.scrapers.http_client import _result_for_status
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -246,8 +247,8 @@ class TestResultForStatus:
         assert result.html == "<html>hi</html>"
 
     def test_404_returns_error_result(self) -> None:
-        from app.scrapers.http_client import _result_for_status
         from app.models.enums import ExtractionStatus
+        from app.scrapers.http_client import _result_for_status
 
         mock_resp = MagicMock()
         mock_resp.status_code = 404

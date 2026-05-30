@@ -11,8 +11,12 @@ Fixtures:
 """
 
 import os
+from collections.abc import AsyncGenerator
 
 import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # ── Patch env BEFORE any app import so pydantic-settings reads test values ────
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -28,13 +32,6 @@ _mac_docker_socket = "/Users/saviorozario/.docker/run/docker.sock"
 if os.path.exists(_mac_docker_socket):
     os.environ.setdefault("DOCKER_HOST", f"unix://{_mac_docker_socket}")
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
-
-# ── Now it's safe to import app modules ───────────────────────────────────────
-from collections.abc import AsyncGenerator
-
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

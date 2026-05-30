@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -239,7 +239,6 @@ async def test_send_notification_whatsapp_creates_sent_log(
     pg_engine, pg_session_factory
 ) -> None:
     """WhatsApp stub: NotificationLog status='sent', no external HTTP call."""
-    import httpx as _httpx
 
     factory = pg_session_factory
 

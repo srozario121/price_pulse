@@ -1,7 +1,6 @@
 """Unit tests for the notify.py helper functions introduced in the CC refactor."""
 from __future__ import annotations
 
-from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,8 +16,8 @@ def _make_log() -> MagicMock:
 class TestDeliverWebhook:
     @pytest.mark.asyncio
     async def test_non_success_response_sets_failed(self) -> None:
-        from app.tasks.notify import _deliver_webhook
         from app.models.notification_log import NotificationStatus
+        from app.tasks.notify import _deliver_webhook
 
         log = _make_log()
         mock_resp = MagicMock()
@@ -39,8 +38,9 @@ class TestDeliverWebhook:
     @pytest.mark.asyncio
     async def test_timeout_exception_commits_and_retries(self) -> None:
         import httpx
-        from app.tasks.notify import _deliver_webhook
+
         from app.models.notification_log import NotificationStatus
+        from app.tasks.notify import _deliver_webhook
 
         log = _make_log()
         session = AsyncMock()
@@ -62,8 +62,9 @@ class TestDeliverWebhook:
     @pytest.mark.asyncio
     async def test_http_error_sets_failed_no_retry(self) -> None:
         import httpx
-        from app.tasks.notify import _deliver_webhook
+
         from app.models.notification_log import NotificationStatus
+        from app.tasks.notify import _deliver_webhook
 
         log = _make_log()
         mock_client = AsyncMock()
@@ -84,8 +85,8 @@ class TestDeliverWebhook:
 class TestDispatchChannel:
     @pytest.mark.asyncio
     async def test_unknown_channel_sets_failed(self) -> None:
-        from app.tasks.notify import _dispatch_channel
         from app.models.notification_log import NotificationChannel, NotificationStatus
+        from app.tasks.notify import _dispatch_channel
 
         log = _make_log()
 
@@ -103,8 +104,8 @@ class TestDispatchChannel:
 class TestMarkPendingLogFailed:
     @pytest.mark.asyncio
     async def test_marks_pending_log_as_failed(self) -> None:
-        from app.tasks.notify import _mark_pending_log_failed
         from app.models.notification_log import NotificationStatus
+        from app.tasks.notify import _mark_pending_log_failed
 
         pending_log = MagicMock()
         pending_log.status = NotificationStatus.pending

@@ -15,7 +15,6 @@ from app.schemas.common import PaginatedResponse, ScrapeJobResponse
 from app.schemas.price import PriceRecordRead
 from app.schemas.product import ProductRead
 
-
 # ── PaginatedResponse ─────────────────────────────────────────────────────────
 
 
