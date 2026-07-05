@@ -47,7 +47,11 @@ celery_app.conf.update(
     enable_utc=True,
     # ── Queue routing ─────────────────────────────────────────────────────────
     # Amazon tasks are dispatched to 'playwright' queue at call-site.
-    # All other tasks use 'default'.
+    # All other tasks use 'default'. task_default_queue MUST be 'default' so the
+    # main worker (started with no -Q) consumes the same queue the routes target
+    # — otherwise routed tasks (scrape, notify) sit unconsumed in 'default' while
+    # the worker listens on Celery's built-in 'celery' queue.
+    task_default_queue="default",
     task_routes={
         "app.tasks.scrape.scrape_product": {"queue": "default"},
         "app.tasks.notify.send_notification": {"queue": "default"},
