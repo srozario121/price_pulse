@@ -107,17 +107,72 @@ Cross-tier overlap (a unit test and an integration test covering the same line) 
 
 ---
 
-## 12. Quality Issue Fixes (PR #1 pre-merge)
+## 12. Quality Issue Fixes (PR #1 pre-merge) ✅ COMPLETE
 
 Address quality gate failures surfaced when CI runs against PR #1 (`feat/item-11-plan-review`). This item tracks any lint, test, type-check, or threshold violations that must be resolved before the branch can be merged to `main`.
 
 **Depends on**: PR #1 CI run completing and reporting failures.
 
+**Resolution**: PR #1 merged to `main` on 2026-07-05 (squash) with all 7 CI checks green (Lint, Test — Backend, Test — Frontend, Build — Docker images, Agent quality, Security — dependency CVE scan, Smoke — Full-stack health check).
+
 ### Tasks
 
-- [ ] Review CI results for PR #1 and list all failing jobs (lint, test-backend, test-frontend, build, security, agent-quality)
-- [ ] Fix each failing check and push fixup commits to `feat/item-11-plan-review`
-- [ ] Confirm all required status checks pass before converting PR #1 from draft to ready for review
+- [x] Review CI results for PR #1 and list all failing jobs (lint, test-backend, test-frontend, build, security, agent-quality)
+- [x] Fix each failing check and push fixup commits to `feat/item-11-plan-review`
+- [x] Confirm all required status checks pass before converting PR #1 from draft to ready for review
+
+---
+
+## 13. End-to-End Behaviour Suite Against Live Compose Stack
+
+The repo currently has **no behavioural E2E coverage** against a running application. What exists is a liveness poll only: the CI "Smoke — Full-stack health check" job and `make smoke` bring up `docker compose` and curl `/health` + `/nginx-health`, and one backend `@pytest.mark.live_api` test hits `/health`. The Playwright specs in `frontend/tests/e2e/smoke.spec.ts` cover UI navigation only, target the Vite dev server (`localhost:5173`) rather than the composed nginx stack, are wired to **no** npm script, and are **never executed in CI** (`@playwright/test` is an unused devDependency).
+
+This item adds a real E2E suite that exercises Price Pulse's core value flow — add product URL → Celery scrape → price dedup → `PriceRecord` persisted → alert evaluation → notification dispatch — against a live `docker compose` stack, plus runs the existing Playwright UI journeys against that same stack in CI.
+
+**Depends on**: existing `docker compose` stack and CI smoke job (Item 10, complete). Behaviour scenarios should trace to the catalogue defined in Item 14.
+
+### Tasks
+
+**Backend pipeline E2E**
+- [ ] Create `backend/tests/e2e/` with `@pytest.mark.live_api` tests that drive the full pipeline against the running stack (not mocks): POST a product → trigger `scrape_product` → assert a `PriceRecord` is persisted → assert dedup on repeated identical HTML → assert alert evaluation triggers a `NotificationLog` when a threshold is crossed
+- [ ] Use a deterministic scrape target (local fixture HTTP server or a stubbed scraper `source_type`) so the flow is reproducible in CI without hitting real retail sites
+- [ ] Add a `make test-e2e` target that assumes a running stack (`make up` / `make dev`) and runs `uv run pytest -m live_api`
+
+**Frontend E2E against compose**
+- [ ] Add `test:e2e` and `test:e2e:ci` scripts to `frontend/package.json` (`playwright test`)
+- [ ] Point Playwright at the composed nginx stack via `E2E_BASE_URL=http://localhost` (not the Vite dev server); seed at least one product so the "navigate to product detail" journey is deterministic
+- [ ] Expand `smoke.spec.ts` (or add specs) to assert core behaviour, not just navigation: a price renders on the dashboard/chart, an alert can be created and appears in the list
+
+**CI integration**
+- [ ] Add a CI job (extend the `smoke` job or add an `e2e` job that `needs: build`) that brings up `docker compose`, waits for health, then runs backend `live_api` E2E and Playwright E2E against the live stack; upload the Playwright HTML report + traces as artifacts on failure
+- [ ] Ensure `make smoke` remains a fast liveness gate and E2E is a separate, clearly-named stage
+
+### Documentation
+- **`CLAUDE.md`** — update: document `make test-e2e`, the `test:e2e` frontend script, and that E2E runs against the compose stack; clarify the distinction between the liveness smoke check and behavioural E2E
+- **`CHANGELOG.md`** — add `### Added` entry: behavioural E2E suite (backend pipeline + Playwright UI journeys) running against the live compose stack in CI
+
+---
+
+## 14. Standardised E2E Behaviour Specification in Documentation
+
+The repo has **no standardised definition of expected end-to-end behaviour**. Behaviour intent currently lives only as ad-hoc prose inside `TODO.md` "Test strategy" / "Live E2E" subsections and the tier description in `CLAUDE.md` — there is no scenario catalogue, no Gherkin/acceptance-criteria format, and nothing traceable that the Item 13 tests can be checked against.
+
+This item defines the expected E2E behaviour of Price Pulse in a **standardised, executable-adjacent format** (Given/When/Then scenarios) under `docs/`, so behaviour is specified once and both the backend pipeline E2E and the Playwright journeys (Item 13) trace to it.
+
+**Depends on**: none to author the spec; Item 13 consumes it (each E2E test references a scenario ID).
+
+### Tasks
+
+- [ ] Create `docs/behaviour/` with a set of Gherkin `.feature` files (or a single `price-pulse.feature`) capturing the core user journeys in Given/When/Then form: add a tracked product, scheduled + on-demand scrape produces a price record, duplicate HTML is deduplicated, price history is queryable/paginated, an alert threshold crossing triggers a notification, the dashboard renders price history and alert status
+- [ ] Assign each scenario a stable ID (e.g. `PP-E2E-001`) and document the format/convention in a `docs/behaviour/README.md` (how scenarios are written, how they map to Item 13 tests)
+- [ ] Add a traceability note linking each Item 13 E2E test to the scenario ID it verifies (docstring/comment referencing `PP-E2E-NNN`)
+- [ ] Decide and record whether scenarios are executed directly (e.g. `pytest-bdd` / Playwright-BDD) or serve as the human-readable spec that hand-written E2E tests trace to — capture the decision as a short ADR under `docs/decisions/`
+
+### Documentation
+- **`docs/behaviour/`** — create: standardised Gherkin scenario catalogue + README describing the convention
+- **`docs/decisions/`** — add ADR: chosen approach for E2E behaviour specification (executed BDD vs. traceable spec)
+- **`CLAUDE.md`** — update: reference `docs/behaviour/` as the source of truth for expected E2E behaviour; note the `PP-E2E-NNN` traceability convention
+- **`CHANGELOG.md`** — add `### Added` entry: standardised E2E behaviour specification (Gherkin scenario catalogue with traceability IDs)
 
 ---
 
