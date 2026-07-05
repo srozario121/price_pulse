@@ -93,9 +93,53 @@ test-backend:   ## Run backend pytest suite
 test-frontend:  ## Run frontend vitest suite (single run)
 	cd frontend && npm run test:run
 
+E2E_COMPOSE = docker compose -f docker-compose.yml -f docker-compose.e2e.yml
+
+.PHONY: e2e-up
+e2e-up:         ## Bring up the e2e overlay stack (fixture-server + webhook-sink + test hooks) and wait for backend health
+	$(E2E_COMPOSE) up -d --build
+	@echo "Waiting for backend health (up to 90s)..."
+	@success=false; \
+	for i in $$(seq 1 18); do \
+	  if curl -sf http://localhost:8000/health > /dev/null 2>&1; then \
+	    echo "Backend healthy after $$(( i * 5 ))s"; success=true; break; \
+	  fi; \
+	  echo "Attempt $$i/18 — not ready yet, sleeping 5s..."; sleep 5; \
+	done; \
+	if [ "$$success" = "false" ]; then \
+	  echo "ERROR: backend did not become healthy within 90s"; \
+	  $(E2E_COMPOSE) logs backend; $(E2E_COMPOSE) down -v; exit 1; \
+	fi
+
+.PHONY: e2e-down
+e2e-down:       ## Tear down the e2e overlay stack and remove its volumes
+	$(E2E_COMPOSE) down -v
+
 .PHONY: test-e2e
-test-e2e:       ## Run Playwright E2E tests (requires make dev running; E2E_BASE_URL=http://localhost:5173)
-	cd frontend && npx playwright test
+test-e2e:       ## Full executed E2E: up e2e stack → run backend pytest-bdd + frontend playwright-bdd → down
+	$(MAKE) e2e-up
+	@echo "--- Backend BDD (pytest-bdd) ---"; \
+	( cd backend && uv run pytest tests/e2e -m live_api --no-cov ); backend_rc=$$?; \
+	echo "--- Frontend BDD (playwright-bdd) ---"; \
+	( cd frontend && E2E_BASE_URL=http://localhost npm run test:e2e:bdd ); frontend_rc=$$?; \
+	$(MAKE) e2e-down; \
+	if [ $$backend_rc -ne 0 ] || [ $$frontend_rc -ne 0 ]; then \
+	  echo "E2E FAILED (backend=$$backend_rc frontend=$$frontend_rc)"; exit 1; \
+	fi; \
+	echo "E2E passed."
+
+.PHONY: test-e2e-smoke
+test-e2e-smoke: ## Fast E2E: up e2e stack → run only @smoke-tagged scenarios → down
+	$(MAKE) e2e-up
+	@echo "--- Backend @smoke BDD ---"; \
+	( cd backend && uv run pytest tests/e2e -m live_api -k smoke --no-cov ); backend_rc=$$?; \
+	echo "--- Frontend @smoke BDD ---"; \
+	( cd frontend && E2E_BASE_URL=http://localhost npm run test:e2e:bdd -- --grep @smoke ); frontend_rc=$$?; \
+	$(MAKE) e2e-down; \
+	if [ $$backend_rc -ne 0 ] || [ $$frontend_rc -ne 0 ]; then \
+	  echo "E2E smoke FAILED (backend=$$backend_rc frontend=$$frontend_rc)"; exit 1; \
+	fi; \
+	echo "E2E smoke passed."
 
 .PHONY: generate-types
 generate-types: ## Generate TypeScript types from backend/openapi.json

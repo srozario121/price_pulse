@@ -1,0 +1,78 @@
+name: price-pulse
+
+# =============================================================================
+# E2E overlay — apply on top of the base stack:
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d
+#
+# Adds a deterministic fixture scrape target and a webhook sink, and enables the
+# gated test-control hooks with a 1-minute scrape interval and a small alert
+# cooldown so scheduling and cooldown behaviour are observable in seconds.
+#
+# NEVER apply this overlay in production — it exposes the /api/v1/_test/* hooks.
+# =============================================================================
+
+services:
+
+  # Enable test hooks + fast cadence on the API and workers
+  backend:
+    environment:
+      - E2E_TEST_HOOKS=true
+      - SCRAPE_INTERVAL_MINUTES=1
+      - ALERT_COOLDOWN_HOURS=1
+    depends_on:
+      fixture-server:
+        condition: service_healthy
+
+  celery-worker:
+    environment:
+      - E2E_TEST_HOOKS=true
+      - SCRAPE_INTERVAL_MINUTES=1
+      - ALERT_COOLDOWN_HOURS=1
+    depends_on:
+      fixture-server:
+        condition: service_healthy
+
+  celery-beat:
+    environment:
+      - SCRAPE_INTERVAL_MINUTES=1
+      - ALERT_COOLDOWN_HOURS=1
+
+  # ---------------------------------------------------------------------------
+  # Fixture server — deterministic scrape target with a mutable price
+  # ---------------------------------------------------------------------------
+  fixture-server:
+    build:
+      context: .
+      dockerfile: docker/fixture-server.Dockerfile
+    image: price-pulse-fixture-server:latest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+    networks:
+      - price-pulse-net
+
+  # ---------------------------------------------------------------------------
+  # Webhook sink — off-the-shelf request echo; returns 200 so webhook
+  # deliveries are recorded as NotificationLog status='sent'
+  # ---------------------------------------------------------------------------
+  webhook-sink:
+    image: mendhak/http-https-echo:31
+    restart: unless-stopped
+    environment:
+      - HTTP_PORT=8080
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+    networks:
+      - price-pulse-net

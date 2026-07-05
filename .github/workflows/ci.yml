@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Nightly full executed-E2E catalogue (03:00 UTC)
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -283,6 +287,73 @@ jobs:
       - name: Tear down stack
         if: always()
         run: docker compose down
+
+  # ===========================================================================
+  # Job 7 — Executed E2E (BDD)
+  # Runs the executed behaviour catalogue against the e2e docker-compose overlay
+  # (fixture-server + webhook-sink + gated test hooks). @smoke subset on every
+  # PR/push; the full catalogue runs nightly (schedule) and on manual dispatch.
+  # ===========================================================================
+  e2e:
+    name: E2E — executed behaviour (BDD)
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Create .env from example
+        run: |
+          cp .env.example .env
+          sed -i 's/^SECRET_KEY=.*/SECRET_KEY=ci-e2e-test-secret-key-minimum-32-chars/' .env
+          sed -i 's/^DEBUG=.*/DEBUG=false/' .env
+          # CORS_ORIGINS must be a JSON list (pydantic-settings v2 JSON-decodes complex fields)
+          sed -i 's|^CORS_ORIGINS=.*|CORS_ORIGINS=["http://localhost"]|' .env
+
+      - name: Install backend dev deps (pytest-bdd)
+        run: cd backend && uv sync --group dev
+
+      - name: Install frontend deps + Playwright browsers
+        run: |
+          cd frontend && npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Select E2E scope (full on schedule/dispatch, @smoke otherwise)
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "target=test-e2e" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=test-e2e-smoke" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run executed E2E
+        run: make ${{ steps.scope.outputs.target }}
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: frontend/test-results
+          retention-days: 7
 
   # ===========================================================================
   # Job 6 — Agent quality

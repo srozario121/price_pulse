@@ -35,12 +35,19 @@ dev = [
     "testcontainers[postgres]>=4.0",
     "fakeredis>=2.0",
     "pip-audit>=2.7",
+    "pytest-bdd>=7.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "--strict-markers -m 'not live_api' --cov-fail-under=90"
+# The executed E2E/BDD suite under tests/e2e requires the live e2e compose stack
+# and is excluded from the default (coverage-gated) run; invoke it via
+# `make test-e2e` / `make test-e2e-smoke`, which target tests/e2e explicitly.
+addopts = "--strict-markers -m 'not live_api' --cov-fail-under=90 --ignore=tests/e2e"
 testpaths = ["tests"]
+# pytest-bdd resolves .feature paths relative to this dir (docs/behaviour is the
+# canonical, browsable source of truth; step defs live under tests/e2e/steps).
+bdd_features_base_dir = "../docs/behaviour"
 markers = [
     "live_api: marks tests that hit real external services (skipped by default)",
     "integration: marks tests that require a real database",
