@@ -115,6 +115,9 @@ e2e-up:         ## Bring up the e2e overlay stack (fixture-server + webhook-sink
 	  echo "ERROR: schema provisioning failed"; \
 	  $(E2E_COMPOSE) logs backend; $(E2E_COMPOSE) down -v; exit 1; \
 	fi
+	@echo "Restarting workers so they start against the populated schema..."
+	$(E2E_COMPOSE) restart celery-worker celery-beat
+	@sleep 8
 
 .PHONY: e2e-down
 e2e-down:       ## Tear down the e2e overlay stack and remove its volumes
@@ -140,6 +143,7 @@ test-e2e-smoke: ## Fast E2E: up e2e stack â†’ run only @smoke-tagged scenarios â
 	( cd backend && uv run pytest tests/e2e -o addopts="" -m "live_api and smoke" ); backend_rc=$$?; \
 	echo "--- Frontend @smoke BDD ---"; \
 	( cd frontend && E2E_BASE_URL=http://localhost npm run test:e2e:bdd -- --grep @smoke ); frontend_rc=$$?; \
+	if [ $$backend_rc -ne 0 ]; then echo "=== celery-worker logs ==="; $(E2E_COMPOSE) logs --tail=120 celery-worker; echo "=== backend logs ==="; $(E2E_COMPOSE) logs --tail=60 backend; fi; \
 	$(MAKE) e2e-down; \
 	if [ $$backend_rc -ne 0 ] || [ $$frontend_rc -ne 0 ]; then \
 	  echo "E2E smoke FAILED (backend=$$backend_rc frontend=$$frontend_rc)"; exit 1; \

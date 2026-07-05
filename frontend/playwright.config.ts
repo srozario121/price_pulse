@@ -4,6 +4,9 @@ import { defineBddConfig } from 'playwright-bdd';
 // Generate Playwright test files from the canonical Gherkin catalogue in
 // docs/behaviour/. Step definitions live under tests/e2e/steps/.
 const testDir = defineBddConfig({
+  // featuresRoot must contain the feature files, which live at the repo root
+  // under docs/behaviour/ (outside frontend/).
+  featuresRoot: '..',
   features: '../docs/behaviour/ui_journeys.feature',
   steps: 'tests/e2e/steps/*.steps.ts',
 });
