@@ -110,9 +110,9 @@ e2e-up:         ## Bring up the e2e overlay stack (fixture-server + webhook-sink
 	  echo "ERROR: backend did not become healthy within 90s"; \
 	  $(E2E_COMPOSE) logs backend; $(E2E_COMPOSE) down -v; exit 1; \
 	fi
-	@echo "Applying database migrations..."
-	@if ! $(E2E_COMPOSE) exec -T backend /app/.venv/bin/alembic upgrade head; then \
-	  echo "ERROR: alembic migrations failed"; \
+	@echo "Provisioning database schema (create_all)..."
+	@if ! $(E2E_COMPOSE) exec -T backend /app/.venv/bin/python scripts/create_schema.py; then \
+	  echo "ERROR: schema provisioning failed"; \
 	  $(E2E_COMPOSE) logs backend; $(E2E_COMPOSE) down -v; exit 1; \
 	fi
 
