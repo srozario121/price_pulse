@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Items 13 & 14 — E2E Harness + Executed Behaviour Specification)
+
+- `docs/behaviour/`: standardised, **executed** Gherkin behaviour catalogue (single source of truth) — `product_tracking`, `scraping`, `alerts`, `notification_channels`, and `ui_journeys` features with stable `@PP-E2E-NNN` IDs and a `@smoke` subset; `README.md` documents the ID convention and feature→step traceability
+- Backend E2E runs under `pytest-bdd` (`backend/tests/e2e/steps/`); frontend UI journeys under `playwright-bdd` (`frontend/tests/e2e/steps/`); both runners point at `docs/behaviour/`. Assertions go through the public REST API / UI only
+- `GET /api/v1/alerts/{alert_id}/notifications`: paginated `NotificationLogRead` endpoint so notification deliveries are assertable via the public API
+- E2E harness (Item 13): `docker-compose.e2e.yml` overlay adds a custom `fixture-server` (canned HTML + `PUT /fixtures/{slug}/price` price mutation) and an off-the-shelf `webhook-sink`; sets `E2E_TEST_HOOKS=true`, `SCRAPE_INTERVAL_MINUTES=1`, and a small `ALERT_COOLDOWN_HOURS`
+- Gated test-control hooks mounted only when `E2E_TEST_HOOKS=true` (absent otherwise, verified by unit test): `POST /api/v1/_test/products/{id}/scrape-sync` (inline scrape) and `POST /api/v1/_test/alerts/{id}/reset-cooldown`
+- `make test-e2e` (up → pytest-bdd + playwright-bdd → down), `make test-e2e-smoke` (@smoke subset), `make e2e-up`, `make e2e-down`; CI `e2e` job runs `@smoke` on every PR/push and the full catalogue nightly + on `workflow_dispatch`
+- `docs/decisions/e2e-behaviour-spec.md`: ADR for the executed-BDD approach; `pytest-bdd` (backend) and `playwright-bdd` (frontend) added as dev dependencies
+
 ### Fixed
 
 - `docker/backend.Dockerfile`, `docker/celery-playwright.Dockerfile`: replaced `uv sync --no-install-workspace` with `uv export --package price-pulse-backend | uv pip install` to fix empty virtualenv — `--no-install-workspace` from the workspace root resolves only the root package (no deps) and produces an empty `.venv`, leaving celery and all other runtime dependencies uninstalled

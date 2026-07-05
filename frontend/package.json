@@ -10,6 +10,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:bdd": "bddgen && playwright test",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "format": "prettier --write src/**/*.{ts,tsx,css} && eslint src --fix",
     "generate-types": "npx openapi-typescript ../backend/openapi.json -o src/api/types.ts"
@@ -62,6 +64,7 @@
     "jsdom": "^24.1.1",
     "msw": "^2.3.4",
     "openapi-typescript": "^7.13.0",
+    "playwright-bdd": "^7.5.0",
     "prettier": "^3.3.3",
     "typescript": "^5.5.3",
     "vite": "^5.3.4",
