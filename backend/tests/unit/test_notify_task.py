@@ -1,4 +1,5 @@
 """Unit tests for app.tasks.notify.send_notification."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -79,7 +80,9 @@ async def test_send_notification_email_stub() -> None:
 
     with patch("app.tasks.notify.AsyncSessionLocal", return_value=session):
         with patch("app.tasks.notify.logger") as log_mock:
-            log_mock.info = MagicMock(side_effect=lambda event, **kw: captured_logs.append({"event": event, **kw}))
+            log_mock.info = MagicMock(
+                side_effect=lambda event, **kw: captured_logs.append({"event": event, **kw})
+            )
             log_mock.warning = MagicMock()
             log_mock.error = MagicMock()
             await send_notification(alert_id=1)
@@ -89,6 +92,7 @@ async def test_send_notification_email_stub() -> None:
     log_instance = session.add.call_args[0][0]
     # The status should have been set to 'sent'
     from app.models.notification_log import NotificationStatus
+
     assert log_instance.status == NotificationStatus.sent
 
     # Check that an email_stub event was logged
@@ -99,7 +103,6 @@ async def test_send_notification_email_stub() -> None:
 @pytest.mark.asyncio
 async def test_send_notification_webhook_success() -> None:
     """Webhook channel: httpx.post called, status='sent' on 2xx."""
-    import httpx
 
     from app.tasks.notify import send_notification
 
@@ -128,6 +131,7 @@ async def test_send_notification_webhook_success() -> None:
     assert call_args[0][0] == "https://hooks.example.com/price"
 
     from app.models.notification_log import NotificationStatus
+
     log_instance = session.add.call_args[0][0]
     assert log_instance.status == NotificationStatus.sent
 
@@ -152,6 +156,7 @@ async def test_send_notification_webhook_missing_url() -> None:
     httpx_mock.AsyncClient.assert_not_called()
 
     from app.models.notification_log import NotificationStatus
+
     log_instance = session.add.call_args[0][0]
     assert log_instance.status == NotificationStatus.failed
 
@@ -183,6 +188,7 @@ async def test_send_notification_whatsapp_stub() -> None:
     httpx_mock.AsyncClient.assert_not_called()
 
     from app.models.notification_log import NotificationStatus
+
     log_instance = session.add.call_args[0][0]
     assert log_instance.status == NotificationStatus.sent
 
@@ -205,6 +211,7 @@ async def test_send_notification_whatsapp_missing_number() -> None:
         await send_notification(alert_id=1)
 
     from app.models.notification_log import NotificationStatus
+
     log_instance = session.add.call_args[0][0]
     assert log_instance.status == NotificationStatus.failed
 
@@ -235,10 +242,7 @@ def test_alert_cooldown_reads_from_settings() -> None:
 
     # Resolve path relative to this test file (tests/unit/ → app/services/)
     service_path = (
-        pathlib.Path(__file__).parent.parent.parent
-        / "app"
-        / "services"
-        / "alert_service.py"
+        pathlib.Path(__file__).parent.parent.parent / "app" / "services" / "alert_service.py"
     )
     src = service_path.read_text()
     tree = ast.parse(src)

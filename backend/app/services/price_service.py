@@ -1,4 +1,5 @@
 """Price service — deduplication, persistence, and alert evaluation trigger."""
+
 from __future__ import annotations
 
 import structlog
@@ -11,6 +12,15 @@ from app.schemas.scraper import ScrapedResult
 from app.services import alert_service
 
 logger = structlog.get_logger()
+
+
+def _is_duplicate(latest: PriceRecord | None, scraped_result: ScrapedResult) -> bool:
+    return (
+        latest is not None
+        and bool(scraped_result.html_hash)
+        and latest.raw_html_hash is not None
+        and latest.raw_html_hash == scraped_result.html_hash
+    )
 
 
 async def record_price(
@@ -26,7 +36,6 @@ async def record_price(
 
     Alert evaluation is called only when extraction_status is OK.
     """
-    # Fetch the most recent PriceRecord for this product
     stmt = (
         select(PriceRecord)
         .where(PriceRecord.product_id == product_id)
@@ -36,21 +45,14 @@ async def record_price(
     result = await session.execute(stmt)
     latest = result.scalar_one_or_none()
 
-    # Deduplicate: same non-empty hash means the page hasn't changed
-    if (
-        latest is not None
-        and scraped_result.html_hash  # non-empty
-        and latest.raw_html_hash is not None
-        and latest.raw_html_hash == scraped_result.html_hash
-    ):
+    if _is_duplicate(latest, scraped_result):
         logger.info(
             "price_record_deduplicated",
             product_id=product_id,
             html_hash=scraped_result.html_hash,
         )
-        return latest
+        return latest  # type: ignore[return-value]
 
-    # Insert new record
     new_record = PriceRecord(
         product_id=product_id,
         price=scraped_result.price,
@@ -68,7 +70,6 @@ async def record_price(
         extraction_status=scraped_result.extraction_status.value,
     )
 
-    # Evaluate alerts only for successful extractions
     if scraped_result.extraction_status == ExtractionStatus.OK:
         await alert_service.evaluate_alerts(product_id, session)
 

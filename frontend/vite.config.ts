@@ -28,7 +28,16 @@ export default defineConfig({
       thresholds: {
         global: { branches: 80, functions: 80, lines: 80, statements: 80 },
       },
-      exclude: ['node_modules/', 'tests/', 'src/main.tsx', '**/*.d.ts', '**/*.config.*'],
+      exclude: [
+        'node_modules/',
+        'tests/',
+        'dist/',
+        'src/main.tsx',
+        'src/api/types.ts',
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/.eslintrc.*',
+      ],
     },
   },
 });

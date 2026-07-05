@@ -5,6 +5,7 @@ Routes
 GET  /products/{id}/prices  → 200 PaginatedResponse[PriceRecordRead]  price history
 POST /products/{id}/scrape  → 202 ScrapeJobResponse                   trigger scrape job
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -74,7 +75,7 @@ async def list_prices(
         .limit(limit)
         .offset(offset)
     )
-    items = list(result.scalars().all())
+    items = [PriceRecordRead.model_validate(r) for r in result.scalars().all()]
 
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 

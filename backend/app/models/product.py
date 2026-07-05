@@ -1,4 +1,5 @@
 """Product ORM model — represents a tracked retail product URL."""
+
 from __future__ import annotations
 
 import enum

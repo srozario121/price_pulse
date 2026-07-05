@@ -22,7 +22,12 @@ FROM base AS builder
 # Copy workspace root files first so uv can resolve the full locked dependency tree
 COPY pyproject.toml uv.lock* ./
 COPY backend/pyproject.toml backend/
-RUN uv sync --frozen --no-dev
+# uv sync --no-install-workspace from the workspace root resolves only root deps (empty)
+# and produces an empty venv. Instead: export all workspace member deps from the frozen
+# lockfile, create the venv explicitly, and install via uv pip.
+RUN uv export --frozen --no-dev --no-hashes --package price-pulse-backend --output-file /tmp/requirements.txt && \
+    uv venv .venv && \
+    uv pip install --no-cache-dir -r /tmp/requirements.txt
 
 # ---------------------------------------------------------------------------
 # Development stage — includes dev dependencies for hot-reload
@@ -38,7 +43,7 @@ RUN uv sync
 COPY backend/ .
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # ---------------------------------------------------------------------------
 # Production stage — lean runtime image
@@ -72,4 +77,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

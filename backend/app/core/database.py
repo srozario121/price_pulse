@@ -14,6 +14,7 @@ Usage in a route:
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -24,7 +25,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.config import settings
 
 
-def _make_engine():
+def _make_engine() -> AsyncEngine:
     """Build async engine with options appropriate for the configured driver."""
     url = settings.DATABASE_URL
     is_sqlite = url.startswith("sqlite")

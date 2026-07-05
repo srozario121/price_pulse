@@ -55,7 +55,8 @@ def latest_report_dir() -> Path:
     if not LOGS_QUALITY.exists():
         _die("No quality report found; run make quality first")
     dirs = sorted(
-        [d for d in LOGS_QUALITY.iterdir() if d.is_dir() and d.name != "__pycache__"]
+        [d for d in LOGS_QUALITY.iterdir() if d.is_dir() and d.name != "__pycache__"],
+        key=lambda d: d.stat().st_mtime,
     )
     if not dirs:
         _die("No quality report found; run make quality first")

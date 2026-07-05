@@ -5,12 +5,10 @@ from __future__ import annotations
 import json
 import textwrap
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 import scripts.check_quality as cq
-
 
 # ---------------------------------------------------------------------------
 # percentile
@@ -150,17 +148,25 @@ def test_latest_report_dir_picks_last(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _make_report_dir(base: Path, cc_scores: list[float], mi_scores: list[float], hal_efforts: list[float]) -> Path:
+def _make_report_dir(
+    base: Path, cc_scores: list[float], mi_scores: list[float], hal_efforts: list[float]
+) -> Path:
     report_dir = base / "20240101T120000"
     report_dir.mkdir(parents=True)
 
-    cc_data = {"app/main.py": [{"name": f"fn{i}", "complexity": v} for i, v in enumerate(cc_scores)]}
+    cc_data = {
+        "app/main.py": [{"name": f"fn{i}", "complexity": v} for i, v in enumerate(cc_scores)]
+    }
     (report_dir / "cc.json").write_text(json.dumps(cc_data))
 
     mi_data = {f"app/mod{i}.py": {"mi": v} for i, v in enumerate(mi_scores)}
     (report_dir / "mi.json").write_text(json.dumps(mi_data))
 
-    hal_data = {"app/main.py": {"functions": [{"name": f"fn{i}", "effort": v} for i, v in enumerate(hal_efforts)]}}
+    hal_data = {
+        "app/main.py": {
+            "functions": [{"name": f"fn{i}", "effort": v} for i, v in enumerate(hal_efforts)]
+        }
+    }
     (report_dir / "hal.json").write_text(json.dumps(hal_data))
 
     return report_dir
@@ -185,13 +191,17 @@ def _patch_all(monkeypatch, tmp_path: Path, line_rate: float, cc: list, mi: list
 
 
 def test_run_all_pass(monkeypatch, tmp_path):
-    _patch_all(monkeypatch, tmp_path, line_rate=0.95, cc=[1, 2, 3], mi=[80, 90, 100], hal=[100, 200, 300])
+    _patch_all(
+        monkeypatch, tmp_path, line_rate=0.95, cc=[1, 2, 3], mi=[80, 90, 100], hal=[100, 200, 300]
+    )
 
     cq.run()  # must not raise
 
 
 def test_run_coverage_below_threshold(monkeypatch, tmp_path, capsys):
-    _patch_all(monkeypatch, tmp_path, line_rate=0.89, cc=[1, 2, 3], mi=[80, 90, 100], hal=[100, 200, 300])
+    _patch_all(
+        monkeypatch, tmp_path, line_rate=0.89, cc=[1, 2, 3], mi=[80, 90, 100], hal=[100, 200, 300]
+    )
 
     with pytest.raises(SystemExit) as exc_info:
         cq.run()
@@ -201,7 +211,9 @@ def test_run_coverage_below_threshold(monkeypatch, tmp_path, capsys):
 
 
 def test_run_cc_above_threshold(monkeypatch, tmp_path):
-    _patch_all(monkeypatch, tmp_path, line_rate=0.95, cc=[8, 9, 10], mi=[80, 90, 100], hal=[100, 200, 300])
+    _patch_all(
+        monkeypatch, tmp_path, line_rate=0.95, cc=[8, 9, 10], mi=[80, 90, 100], hal=[100, 200, 300]
+    )
 
     with pytest.raises(SystemExit) as exc_info:
         cq.run()
@@ -209,7 +221,9 @@ def test_run_cc_above_threshold(monkeypatch, tmp_path):
 
 
 def test_run_github_step_summary_all_pass(monkeypatch, tmp_path):
-    _patch_all(monkeypatch, tmp_path, line_rate=0.95, cc=[1, 2, 3], mi=[80, 90, 100], hal=[100, 200, 300])
+    _patch_all(
+        monkeypatch, tmp_path, line_rate=0.95, cc=[1, 2, 3], mi=[80, 90, 100], hal=[100, 200, 300]
+    )
     summary_file = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
@@ -222,7 +236,9 @@ def test_run_github_step_summary_all_pass(monkeypatch, tmp_path):
 
 
 def test_run_github_step_summary_one_failure(monkeypatch, tmp_path):
-    _patch_all(monkeypatch, tmp_path, line_rate=0.89, cc=[1, 2, 3], mi=[80, 90, 100], hal=[100, 200, 300])
+    _patch_all(
+        monkeypatch, tmp_path, line_rate=0.89, cc=[1, 2, 3], mi=[80, 90, 100], hal=[100, 200, 300]
+    )
     summary_file = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))

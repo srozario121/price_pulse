@@ -328,3 +328,22 @@ Added WhatsApp as a third notification channel alongside email and webhook. Prov
 **Tasks removed/changed**: 5 — "Configure coverage upload to Codecov" replaced by GitHub Step Summary; "Add `.pre-commit-config.yaml`" marked complete (item 1 created it); "config/quality-thresholds.toml" marked complete; "Add `make lint` and `make format`" marked complete; "Wire CI jobs" narrowed to only the genuinely missing `security` job
 **Documentation changes**: `backend/pyproject.toml` (update — pip-audit dep + --cov-fail-under); `backend/scripts/check_quality.py` (create); `Makefile` (update — quality target body); `.github/workflows/ci.yml` (update — security job + postgres 16); `CONTRIBUTING.md` (update — branch protection section); `CLAUDE.md` (update — quality command description + thresholds section); `CHANGELOG.md` (update at implementation time)
 **Key design constraint**: `make quality` is now both a reporter and an enforcer — it exits 1 on any threshold breach. `backend/scripts/check_quality.py` is the single source of truth for threshold logic; it reads `config/quality-thresholds.toml` directly so adding or changing thresholds never requires editing the Makefile or CI workflow.
+
+---
+
+## TODO item 11 — Test Suite Health & Coverage Deduplication (2026-05-30)
+
+**Ambiguities found**: 5
+
+| Category | Finding | Resolution |
+|---|---|---|
+| Scope gaps | Top-level `scripts/` directory (for `.sh` and `.js` overlap scripts) not created by any item — neither Item 10 nor Item 11 had a creation task | Added task: "Create `scripts/` directory at repo root" to Item 11 Setup section |
+| Error & edge-case handling | Scripts always exited 0 (informational) but user wanted enforcement promoted to a hard gate in the same sprint as Item 11 — no enforcement tasks existed | Added Baseline and enforcement task sub-section: set `max_intra_tier_duplicate_lines_*` in `[test-health]` after baseline run; scripts exit 1 when count exceeds threshold; exit 0 with info when field absent |
+| Error & edge-case handling | No behaviour specified for the pre-baseline case (threshold field not yet present in TOML — first run before baseline task completes) | Exit 0 with "No enforcement threshold set — run baseline task first"; enforcement is additive once the field is present |
+| Scope gaps | Shell script used `../../logs/quality/...` as the coverage reports directory, but if the script `cd`s into `frontend/` to invoke vitest, `../../` resolves one level above the repo root | Fixed to `../logs/quality/...` (one level up from `frontend/` = repo root); noted explicitly in the Frontend script working directory design decision |
+| Test coverage | Test strategy marked live E2E as "Not required" but user selected all four test layers | Promoted acceptance criterion to a named live E2E task: "Run `make quality` on a clean checkout after Item 10 is complete; assert both overlap scripts exit 0 and print a summary line to stdout" |
+
+**Tasks added**: 5 — `scripts/` directory creation; enforcement threshold reading in `check_coverage_overlap.py`; enforcement threshold reading in `check_coverage_overlap_frontend.js`; "Set enforcement thresholds" baseline task; "Verify `make quality` exits cleanly with enforcement thresholds set" task
+**Tasks removed/changed**: 2 — "Exit 0 always" removed from both script task descriptions and replaced with conditional enforcement logic; `../../` path corrected to `../` in the shell script task
+**Documentation changes**: `scripts/` directory (create); `backend/scripts/check_coverage_overlap.py` (create — now includes enforcement logic); `scripts/check_coverage_overlap_frontend.sh` (create — path and working-directory clarified); `scripts/check_coverage_overlap_frontend.js` (create — now includes enforcement logic); `config/quality-thresholds.toml` (update — `[test-health]` section now includes enforcement thresholds, not just baseline counts); `CLAUDE.md` (update — quality thresholds section references `[test-health]` enforcement); `CHANGELOG.md` (update at implementation time)
+**Key design constraint**: Enforcement gates are installed in the same sprint as the detection scripts, not deferred. Both overlap scripts exit 0 until `max_intra_tier_duplicate_lines_*` fields appear in `[test-health]` — the threshold absence is the "informational" state, not a permanent design. Once the baseline run populates the thresholds, CI blocks on net new duplicates.

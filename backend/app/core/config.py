@@ -72,7 +72,7 @@ class Settings(BaseSettings):
         """Fall back to REDIS_URL when CELERY_BROKER_URL is not set."""
         if not v:
             data = info.data if hasattr(info, "data") else {}
-            return data.get("REDIS_URL", "redis://localhost:6379/0")
+            return str(data.get("REDIS_URL", "redis://localhost:6379/0"))
         return str(v)
 
     @model_validator(mode="after")

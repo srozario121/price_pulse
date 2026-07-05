@@ -11,8 +11,12 @@ Fixtures:
 """
 
 import os
+from collections.abc import AsyncGenerator
 
 import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # ── Patch env BEFORE any app import so pydantic-settings reads test values ────
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -20,21 +24,14 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-minimum-32-characters-long"
 os.environ.setdefault("DEBUG", "true")
 os.environ.setdefault("CORS_ORIGINS", '["http://localhost:5173"]')
 
-# ── Testcontainers: Docker Desktop socket path + disable Ryuk on macOS ────────
-# Docker Desktop on macOS uses a non-standard socket path; testcontainers
-# defaults to /var/run/docker.sock which doesn't exist.  Ryuk (the container
-# reaper) also fails on this setup — disabling it is safe for local test runs.
-os.environ.setdefault(
-    "DOCKER_HOST", "unix:///Users/saviorozario/.docker/run/docker.sock"
-)
+# ── Testcontainers: Docker Desktop socket path + disable Ryuk ─────────────────
+# Docker Desktop on macOS uses a non-standard socket path; only override
+# DOCKER_HOST when that socket file actually exists so CI (which uses the
+# standard /var/run/docker.sock) is unaffected.
+_mac_docker_socket = "/Users/saviorozario/.docker/run/docker.sock"
+if os.path.exists(_mac_docker_socket):
+    os.environ.setdefault("DOCKER_HOST", f"unix://{_mac_docker_socket}")
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
-
-# ── Now it's safe to import app modules ───────────────────────────────────────
-from collections.abc import AsyncGenerator
-
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -80,9 +77,12 @@ async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
 async def async_client(db_engine) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient wired to a fresh FastAPI app using the test SQLite DB.
 
-    The `get_db` dependency is overridden so every route uses the same
-    in-memory engine as `db_session`.
+    Both the `get_db` dependency and the module-level `AsyncSessionLocal`
+    used by the lifespan startup probe and the /health endpoint are
+    redirected to the test SQLite engine so the app never touches the
+    real database during unit/integration tests.
     """
+    import app.main as main_module
     from app.core.database import Base, get_db
     from app.main import create_app
 
@@ -108,12 +108,20 @@ async def async_client(db_engine) -> AsyncGenerator[AsyncClient, None]:
                 await session.rollback()
                 raise
 
+    # Patch AsyncSessionLocal in main.py so the lifespan startup probe and
+    # /health endpoint use SQLite instead of the global PostgreSQL engine.
+    original_session_local = main_module.AsyncSessionLocal
+    main_module.AsyncSessionLocal = test_session_factory  # type: ignore[assignment]
+
     test_app = create_app()
     test_app.dependency_overrides[get_db] = override_get_db
 
     transport = ASGITransport(app=test_app)  # type: ignore[arg-type]
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+    finally:
+        main_module.AsyncSessionLocal = original_session_local
 
 
 # ── Postgres testcontainer fixtures (integration tests) ───────────────────────

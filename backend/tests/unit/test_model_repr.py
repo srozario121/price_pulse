@@ -20,7 +20,9 @@ from app.models.product import Product, SourceType
 class TestModelRepr:
     def test_product_repr_includes_id_and_name(self):
         # Arrange
-        p = Product(id=42, name="Test Widget", url="https://example.com", source_type=SourceType.amazon)
+        p = Product(
+            id=42, name="Test Widget", url="https://example.com", source_type=SourceType.amazon
+        )
         # Act / Assert
         assert "42" in repr(p)
         assert "Test Widget" in repr(p)
@@ -34,7 +36,9 @@ class TestModelRepr:
 
     def test_price_alert_repr_includes_product_id_and_direction(self):
         # Arrange
-        alert = PriceAlert(id=3, product_id=5, direction=AlertDirection.below, threshold_price="10.00")
+        alert = PriceAlert(
+            id=3, product_id=5, direction=AlertDirection.below, threshold_price="10.00"
+        )
         # Act / Assert
         assert "5" in repr(alert)
         assert "below" in repr(alert)

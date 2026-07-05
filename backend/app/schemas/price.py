@@ -1,4 +1,5 @@
 """Pydantic v2 schemas for PriceRecord."""
+
 from datetime import datetime
 from decimal import Decimal
 

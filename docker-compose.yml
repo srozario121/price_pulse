@@ -55,7 +55,8 @@ services:
       dockerfile: docker/backend.Dockerfile
     image: price-pulse-backend:latest
     # pool is set in celery_app.py; Celery 5.x does not accept "asyncio" as a -P shorthand
-    command: celery -A app.workers.celery_app worker --loglevel=info
+    # Full path avoids relying on PATH env expansion when exec-ing the command.
+    command: /app/.venv/bin/celery -A app.workers.celery_app worker --loglevel=info
     restart: unless-stopped
     env_file: .env
     environment:
@@ -84,7 +85,7 @@ services:
       context: .
       dockerfile: docker/backend.Dockerfile
     image: price-pulse-backend:latest
-    command: celery -A app.workers.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler
+    command: /app/.venv/bin/celery -A app.workers.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler
     restart: unless-stopped
     env_file: .env
     environment:

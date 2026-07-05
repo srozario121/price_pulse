@@ -1,4 +1,5 @@
 """Pydantic schema for the result returned by all scraper adapters."""
+
 from __future__ import annotations
 
 from datetime import datetime

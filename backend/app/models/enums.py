@@ -1,4 +1,5 @@
 """Shared enumerations for ORM models and scraper layer."""
+
 from __future__ import annotations
 
 import enum

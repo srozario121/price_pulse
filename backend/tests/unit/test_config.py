@@ -9,12 +9,24 @@ from pydantic import ValidationError
 
 
 def make_settings(**kwargs):
-    """Create a fresh Settings instance with the given env vars."""
+    """Create a fresh Settings instance from kwargs only.
 
-    # Temporarily override env — build Settings from kwargs directly
+    Temporarily removes from the process environment any Settings fields
+    not explicitly provided, so CI env vars (LOG_LEVEL, REDIS_URL, etc.)
+    don't silently override the defaults being tested.
+    """
+    import os
+
     from app.core.config import Settings
 
-    return Settings(**kwargs)  # type: ignore[call-arg]
+    fields_as_env = {name.upper() for name in Settings.model_fields}
+    kwargs_upper = {k.upper() for k in kwargs}
+    to_pop = fields_as_env - kwargs_upper
+    saved = {k: os.environ.pop(k) for k in to_pop if k in os.environ}
+    try:
+        return Settings(**kwargs)  # type: ignore[call-arg]
+    finally:
+        os.environ.update(saved)
 
 
 class TestSecretKey:

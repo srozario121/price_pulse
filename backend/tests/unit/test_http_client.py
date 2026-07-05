@@ -1,4 +1,5 @@
 """Unit tests for the shared HTTP client (fetch_page)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch

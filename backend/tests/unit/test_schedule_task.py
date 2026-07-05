@@ -1,4 +1,5 @@
 """Unit tests for app.tasks.schedule (register/deregister/startup_sync)."""
+
 from __future__ import annotations
 
 from datetime import timedelta

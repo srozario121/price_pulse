@@ -3,10 +3,10 @@
 Uses ``pg_async_client`` (Postgres testcontainer) because the Product model
 uses native Postgres ENUMs that are incompatible with SQLite.
 """
+
 from __future__ import annotations
 
 import pytest
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -178,9 +178,7 @@ class TestUpdateProduct:
         a = await _create_product(
             pg_async_client, {**PRODUCT_PAYLOAD, "url": "https://example.com/a"}
         )
-        await _create_product(
-            pg_async_client, {**PRODUCT_PAYLOAD, "url": "https://example.com/b"}
-        )
+        await _create_product(pg_async_client, {**PRODUCT_PAYLOAD, "url": "https://example.com/b"})
         # Try to update product A's URL to product B's URL
         resp = await pg_async_client.patch(
             f"/api/v1/products/{a['id']}",
@@ -200,9 +198,7 @@ class TestUpdateProduct:
 
     @pytest.mark.asyncio
     async def test_patch_nonexistent_returns_404(self, pg_async_client):
-        resp = await pg_async_client.patch(
-            "/api/v1/products/99999", json={"name": "Ghost"}
-        )
+        resp = await pg_async_client.patch("/api/v1/products/99999", json={"name": "Ghost"})
         assert resp.status_code == 404
 
 

@@ -22,8 +22,8 @@ import asyncio
 from datetime import timedelta
 
 import structlog
-from celery.signals import worker_ready  # type: ignore[import-untyped]
-from redbeat import RedBeatSchedulerEntry  # type: ignore[import-untyped]
+from celery.signals import worker_ready
+from redbeat import RedBeatSchedulerEntry
 
 from app.workers.celery_app import celery_app
 
@@ -42,9 +42,7 @@ def register_product_schedule(product_id: int, interval_minutes: int) -> None:
     Raises ValueError if interval_minutes < 1.
     """
     if interval_minutes < 1:
-        raise ValueError(
-            f"interval_minutes must be >= 1, got {interval_minutes}"
-        )
+        raise ValueError(f"interval_minutes must be >= 1, got {interval_minutes}")
 
     key = _schedule_key(product_id)
     interval = timedelta(minutes=interval_minutes)
@@ -73,9 +71,7 @@ def deregister_product_schedule(product_id: int) -> None:
     """
     key = _schedule_key(product_id)
     try:
-        entry = RedBeatSchedulerEntry.from_key(
-            f"redbeat:{key}", app=celery_app
-        )
+        entry = RedBeatSchedulerEntry.from_key(f"redbeat:{key}", app=celery_app)
         entry.delete()
         logger.info("product_schedule_deregistered", product_id=product_id, key=key)
     except KeyError:
@@ -114,7 +110,7 @@ def startup_sync_schedules() -> None:
     asyncio.run(_sync_schedules_async())
 
 
-@worker_ready.connect
+@worker_ready.connect  # type: ignore[untyped-decorator]
 def on_worker_ready(**_kwargs: object) -> None:  # noqa: ANN003
     """Signal handler: sync schedules when any worker comes online."""
     logger.info("worker_ready_signal_received")

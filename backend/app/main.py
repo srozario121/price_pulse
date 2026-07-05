@@ -115,4 +115,4 @@ def create_app() -> FastAPI:
 
 
 # Module-level app instance used by uvicorn / gunicorn
-app = create_app()
+app: FastAPI = create_app()  # type: ignore[no-redef]

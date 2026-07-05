@@ -1,4 +1,5 @@
 """PriceAlert ORM model — user-defined threshold alert for a product."""
+
 from __future__ import annotations
 
 import enum
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.notification_log import NotificationLog, NotificationChannel
+    from app.models.notification_log import NotificationLog
     from app.models.product import Product
 
 
@@ -23,9 +24,7 @@ class AlertDirection(enum.StrEnum):
 
 class PriceAlert(Base):
     __tablename__ = "price_alert"
-    __table_args__ = (
-        Index("ix_price_alert_product_active", "product_id", "is_active"),
-    )
+    __table_args__ = (Index("ix_price_alert_product_active", "product_id", "is_active"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(

@@ -21,12 +21,17 @@ module.exports = {
         'celery',
         'auth',
         'alerts',
+        'make',
+        'todo',
+        'quality',
+        'plan-review',
       ],
     ],
     // Subject must not end with a period
     'subject-full-stop': [2, 'never', '.'],
-    // Subject must start with lowercase
-    'subject-case': [2, 'always', 'lower-case'],
+    // Reject all-caps, title-case, or sentence-case subjects while allowing
+    // lowercase and uppercase acronyms (e.g. "fix CI failures" is valid).
+    'subject-case': [2, 'never', ['sentence-case', 'start-case', 'pascal-case', 'upper-case']],
     // Header max length
     'header-max-length': [2, 'always', 100],
   },

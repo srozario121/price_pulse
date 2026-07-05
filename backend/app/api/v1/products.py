@@ -8,6 +8,7 @@ GET    /products/{id}         → 200 ProductRead           retrieve
 PATCH  /products/{id}         → 200 ProductRead           partial update
 DELETE /products/{id}         → 204 No Content            delete + cascade
 """
+
 from __future__ import annotations
 
 import structlog
@@ -100,7 +101,7 @@ async def list_products(
         .limit(limit)
         .offset(offset)
     )
-    items = list(result.scalars().all())
+    items = [ProductRead.model_validate(p) for p in result.scalars().all()]
 
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 

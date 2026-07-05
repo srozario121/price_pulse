@@ -1,7 +1,9 @@
 """Alert evaluation service — checks price thresholds and dispatches notifications."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import structlog
 from sqlalchemy import select
@@ -16,13 +18,41 @@ from app.services import notifications
 logger = structlog.get_logger()
 
 
+def _is_cooldown_active(
+    alert: PriceAlert,
+    now: datetime,
+    cooldown_delta: timedelta,
+) -> bool:
+    if alert.notified_at is None:
+        return False
+    notified_at_aware = (
+        alert.notified_at.replace(tzinfo=UTC)
+        if alert.notified_at.tzinfo is None
+        else alert.notified_at
+    )
+    return now < notified_at_aware + cooldown_delta
+
+
+def _threshold_triggered(
+    price: Decimal | None,
+    threshold_price: Decimal,
+    direction: str,
+) -> bool:
+    if price is None:
+        return False
+    if direction == "below":
+        return price < threshold_price
+    if direction == "above":
+        return price > threshold_price
+    return False
+
+
 async def evaluate_alerts(product_id: int, session: AsyncSession) -> None:
     """Compare the latest price against all active alerts for *product_id*.
 
     Skips evaluation if there is no price record or if the latest extraction failed.
     Respects a 24-hour cooldown per alert to avoid notification spam.
     """
-    # Fetch latest price record
     stmt = (
         select(PriceRecord)
         .where(PriceRecord.product_id == product_id)
@@ -49,7 +79,6 @@ async def evaluate_alerts(product_id: int, session: AsyncSession) -> None:
         )
         return
 
-    # Fetch all active alerts for this product
     alerts_stmt = select(PriceAlert).where(
         PriceAlert.product_id == product_id,
         PriceAlert.is_active.is_(True),
@@ -61,38 +90,18 @@ async def evaluate_alerts(product_id: int, session: AsyncSession) -> None:
     cooldown_delta = timedelta(hours=settings.ALERT_COOLDOWN_HOURS)
 
     for alert in alerts:
-        # 24h cooldown check
-        if alert.notified_at is not None:
-            notified_at_aware = (
-                alert.notified_at.replace(tzinfo=UTC)
-                if alert.notified_at.tzinfo is None
-                else alert.notified_at
-            )
-            if now < notified_at_aware + cooldown_delta:
-                logger.info(
-                    "alert_cooldown_active",
-                    alert_id=alert.id,
-                    product_id=product_id,
-                )
-                continue
+        if _is_cooldown_active(alert, now, cooldown_delta):
+            logger.info("alert_cooldown_active", alert_id=alert.id, product_id=product_id)
+            continue
 
-        # Direction-based threshold check
-        price = latest.price
-        triggered = False
-
-        if alert.direction == "below" and price is not None and price < alert.threshold_price:
-            triggered = True
-        elif alert.direction == "above" and price is not None and price > alert.threshold_price:
-            triggered = True
-
-        if triggered:
+        if _threshold_triggered(latest.price, alert.threshold_price, str(alert.direction)):
             alert.notified_at = now
             logger.info(
                 "alert_triggered",
                 alert_id=alert.id,
                 product_id=product_id,
                 direction=str(alert.direction),
-                price=str(price),
+                price=str(latest.price),
                 threshold=str(alert.threshold_price),
             )
             notifications.notify_alert(alert.id)

@@ -3,6 +3,7 @@
 Item 5 replaces the stub with a Celery task dispatch.  These tests verify
 that notify_alert calls send_notification.delay(alert_id) and returns None.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch

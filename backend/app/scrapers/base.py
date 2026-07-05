@@ -1,4 +1,5 @@
 """Abstract base class for all scraper adapters."""
+
 from __future__ import annotations
 
 import hashlib

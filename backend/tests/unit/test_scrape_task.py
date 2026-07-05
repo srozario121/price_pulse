@@ -1,4 +1,5 @@
 """Unit tests for app.tasks.scrape.scrape_product."""
+
 from __future__ import annotations
 
 from decimal import Decimal
