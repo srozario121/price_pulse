@@ -111,6 +111,15 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix="/api/v1")
 
+    # ── Gated E2E test-control hooks ──
+    # Mounted ONLY when E2E_TEST_HOOKS is true (set exclusively by the e2e
+    # compose overlay); absent from the route table in every other environment.
+    if settings.E2E_TEST_HOOKS:
+        from app.api.v1._test_hooks import router as test_hooks_router
+
+        app.include_router(test_hooks_router, prefix="/api/v1")
+        logger.warning("e2e_test_hooks_enabled")
+
     return app
 
 
