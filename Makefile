@@ -119,7 +119,7 @@ e2e-down:       ## Tear down the e2e overlay stack and remove its volumes
 test-e2e:       ## Full executed E2E: up e2e stack → run backend pytest-bdd + frontend playwright-bdd → down
 	$(MAKE) e2e-up
 	@echo "--- Backend BDD (pytest-bdd) ---"; \
-	( cd backend && uv run pytest tests/e2e -m live_api --no-cov ); backend_rc=$$?; \
+	( cd backend && uv run pytest tests/e2e -o addopts="" -m live_api ); backend_rc=$$?; \
 	echo "--- Frontend BDD (playwright-bdd) ---"; \
 	( cd frontend && E2E_BASE_URL=http://localhost npm run test:e2e:bdd ); frontend_rc=$$?; \
 	$(MAKE) e2e-down; \
@@ -132,7 +132,7 @@ test-e2e:       ## Full executed E2E: up e2e stack → run backend pytest-bdd + 
 test-e2e-smoke: ## Fast E2E: up e2e stack → run only @smoke-tagged scenarios → down
 	$(MAKE) e2e-up
 	@echo "--- Backend @smoke BDD ---"; \
-	( cd backend && uv run pytest tests/e2e -m live_api -k smoke --no-cov ); backend_rc=$$?; \
+	( cd backend && uv run pytest tests/e2e -o addopts="" -m "live_api and smoke" ); backend_rc=$$?; \
 	echo "--- Frontend @smoke BDD ---"; \
 	( cd frontend && E2E_BASE_URL=http://localhost npm run test:e2e:bdd -- --grep @smoke ); frontend_rc=$$?; \
 	$(MAKE) e2e-down; \

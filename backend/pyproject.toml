@@ -52,6 +52,7 @@ markers = [
     "live_api: marks tests that hit real external services (skipped by default)",
     "integration: marks tests that require a real database",
     "live_amazon: marks Amazon live-scrape tests; requires celery-playwright service running; flaky in CI due to bot detection — run manually only",
+    "smoke: marks the @smoke-tagged E2E behaviour subset run on every PR (via make test-e2e-smoke)",
 ]
 
 [tool.ruff]

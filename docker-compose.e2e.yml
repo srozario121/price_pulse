@@ -46,6 +46,11 @@ services:
       dockerfile: docker/fixture-server.Dockerfile
     image: price-pulse-fixture-server:latest
     restart: unless-stopped
+    # Published so host-side step definitions can mutate prices via
+    # PUT http://localhost:9000/fixtures/{slug}/price. The backend reaches the
+    # same container in-network at http://fixture-server:9000.
+    ports:
+      - "9000:9000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9000/health').status==200 else 1)"]
       interval: 10s
