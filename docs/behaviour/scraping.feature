@@ -23,7 +23,7 @@ Feature: Price scraping and deduplication
     Then the price history contains 2 records
     And the latest recorded price is "149.99"
 
-  @PP-E2E-013
+  @PP-E2E-013 @smoke
   Scenario: A scheduled scrape records a price via the beat cadence
     Given a tracked product with a fixture price of "199.99"
     When I wait for a scheduled scrape to run

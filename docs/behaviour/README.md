@@ -52,7 +52,7 @@ tests, docs, and discussions can reference behaviour unambiguously.
 | `notification_channels.feature` | PP-E2E-030…034 | pytest-bdd | `backend/tests/e2e/steps/test_behaviour.py` |
 | `ui_journeys.feature` | PP-E2E-040…042 | playwright-bdd | `frontend/tests/e2e/steps/ui_journeys.steps.ts` |
 
-`@smoke` scenarios: `PP-E2E-001`, `PP-E2E-010`, `PP-E2E-020`, `PP-E2E-040`.
+`@smoke` scenarios: `PP-E2E-001`, `PP-E2E-010`, `PP-E2E-013`, `PP-E2E-020`, `PP-E2E-040`.
 
 ## Determinism (test hooks)
 
