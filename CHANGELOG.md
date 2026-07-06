@@ -9,8 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Items 13 & 14 — E2E Harness + Executed Behaviour Specification)
+
+- `docs/behaviour/`: standardised, **executed** Gherkin behaviour catalogue (single source of truth) — `product_tracking`, `scraping`, `alerts`, `notification_channels`, and `ui_journeys` features with stable `@PP-E2E-NNN` IDs and a `@smoke` subset; `README.md` documents the ID convention and feature→step traceability
+- Backend E2E runs under `pytest-bdd` (`backend/tests/e2e/steps/`); frontend UI journeys under `playwright-bdd` (`frontend/tests/e2e/steps/`); both runners point at `docs/behaviour/`. Assertions go through the public REST API / UI only
+- `GET /api/v1/alerts/{alert_id}/notifications`: paginated `NotificationLogRead` endpoint so notification deliveries are assertable via the public API
+- E2E harness (Item 13): `docker-compose.e2e.yml` overlay adds a custom `fixture-server` (canned HTML + `PUT /fixtures/{slug}/price` price mutation) and an off-the-shelf `webhook-sink`; sets `E2E_TEST_HOOKS=true`, `SCRAPE_INTERVAL_MINUTES=1`, and a small `ALERT_COOLDOWN_HOURS`
+- Gated test-control hooks mounted only when `E2E_TEST_HOOKS=true` (absent otherwise, verified by unit test): `POST /api/v1/_test/products/{id}/scrape-sync` (inline scrape) and `POST /api/v1/_test/alerts/{id}/reset-cooldown`
+- `make test-e2e` (up → pytest-bdd + playwright-bdd → down), `make test-e2e-smoke` (@smoke subset), `make e2e-up`, `make e2e-down`; CI `e2e` job runs `@smoke` on every PR/push and the full catalogue nightly + on `workflow_dispatch`
+- `docs/decisions/e2e-behaviour-spec.md`: ADR for the executed-BDD approach; `pytest-bdd` (backend) and `playwright-bdd` (frontend) added as dev dependencies
+
+### Security
+
+- Bumped dependencies flagged by `pip-audit` to their fix versions: `python-multipart` ≥0.0.31 (CVE-2026-53538/53539/53540), `pydantic-settings` ≥2.14.2 (GHSA-4xgf-cpjx-pc3j), and — via `[tool.uv] constraint-dependencies` — `starlette` ≥1.3.1 (PYSEC-2026-248/249), `msgpack` ≥1.2.1 (GHSA-6v7p-g79w-8964), `pip` ≥26.1.2 (PYSEC-2026-196). `pip-audit` now reports no known vulnerabilities.
+
 ### Fixed
 
+- **Newly-added products were never scheduled for scraping** (surfaced by the full E2E catalogue's beat-cadence scenario): `create_product` did not register a RedBeat schedule and there is no global sweep task, so a product added via the API was only ever picked up after a worker restart ran `startup_sync_schedules`. `create_product`/`delete_product` now register/deregister the per-product schedule (best-effort: a Redis error is logged, never fails the request; the worker's startup sync still reconciles on restart).
+- **Celery never executed its `async def` tasks** (surfaced by the new executed E2E suite): the `solo`/prefork pools do not await coroutines, so `scrape_product`, `send_notification`, and schedule tasks failed with "coroutine is not JSON serializable" and never ran (notifications and scheduled scrapes were silently broken in the deployed stack). Fixed by adopting `celery-aio-pool`'s `AsyncIOPool` (`worker_pool="custom"` + `patch_celery_tracer()`).
+- **Notification/scrape tasks were routed to an unconsumed queue**: `task_routes` targeted a `default` queue while the worker (no `-Q`) consumed Celery's built-in `celery` queue. Set `task_default_queue="default"` so routed tasks are actually consumed.
+- **Celery worker could be permanently broken by a startup DB hiccup**: `on_worker_ready` let `startup_sync_schedules()` raise out of the signal handler, corrupting the async worker's event loop. It is now best-effort (logged, non-fatal).
 - `docker/backend.Dockerfile`, `docker/celery-playwright.Dockerfile`: replaced `uv sync --no-install-workspace` with `uv export --package price-pulse-backend | uv pip install` to fix empty virtualenv — `--no-install-workspace` from the workspace root resolves only the root package (no deps) and produces an empty `.venv`, leaving celery and all other runtime dependencies uninstalled
 
 ### Changed

@@ -10,16 +10,17 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "alembic>=1.13",
     "pydantic>=2.7",
-    "pydantic-settings>=2.3",
+    "pydantic-settings>=2.14.2",  # >=2.14.2 fixes GHSA-4xgf-cpjx-pc3j
     "asyncpg>=0.29",
     "celery[redis,asyncio]>=5.4",
     "redis>=5.0",
     "httpx>=0.27",
     "structlog>=24.1",
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.31",  # >=0.0.31 fixes CVE-2026-53538/53539/53540
     "playwright>=1.44",
     "parsel>=1.9",
     "celery-redbeat>=0.13",
+    "celery-aio-pool>=0.1.0rc8",
 ]
 
 [dependency-groups]
@@ -35,16 +36,24 @@ dev = [
     "testcontainers[postgres]>=4.0",
     "fakeredis>=2.0",
     "pip-audit>=2.7",
+    "pytest-bdd>=7.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "--strict-markers -m 'not live_api' --cov-fail-under=90"
+# The executed E2E/BDD suite under tests/e2e requires the live e2e compose stack
+# and is excluded from the default (coverage-gated) run; invoke it via
+# `make test-e2e` / `make test-e2e-smoke`, which target tests/e2e explicitly.
+addopts = "--strict-markers -m 'not live_api' --cov-fail-under=90 --ignore=tests/e2e"
 testpaths = ["tests"]
+# pytest-bdd resolves .feature paths relative to this dir (docs/behaviour is the
+# canonical, browsable source of truth; step defs live under tests/e2e/steps).
+bdd_features_base_dir = "../docs/behaviour"
 markers = [
     "live_api: marks tests that hit real external services (skipped by default)",
     "integration: marks tests that require a real database",
     "live_amazon: marks Amazon live-scrape tests; requires celery-playwright service running; flaky in CI due to bot detection — run manually only",
+    "smoke: marks the @smoke-tagged E2E behaviour subset run on every PR (via make test-e2e-smoke)",
 ]
 
 [tool.ruff]

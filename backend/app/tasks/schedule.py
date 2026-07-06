@@ -112,6 +112,15 @@ def startup_sync_schedules() -> None:
 
 @worker_ready.connect  # type: ignore[untyped-decorator]
 def on_worker_ready(**_kwargs: object) -> None:  # noqa: ANN003
-    """Signal handler: sync schedules when any worker comes online."""
+    """Signal handler: sync schedules when any worker comes online.
+
+    Schedule bootstrap is best-effort: if the DB is briefly unavailable or the
+    schema is not yet present at worker start, log and continue rather than let
+    the exception escape the signal handler — an escaping error corrupts the
+    async worker's event loop and stops it processing tasks (e.g. notifications).
+    """
     logger.info("worker_ready_signal_received")
-    startup_sync_schedules()
+    try:
+        startup_sync_schedules()
+    except Exception as exc:
+        logger.warning("startup_sync_schedules_failed", error=str(exc))

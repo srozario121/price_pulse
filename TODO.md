@@ -123,56 +123,201 @@ Address quality gate failures surfaced when CI runs against PR #1 (`feat/item-11
 
 ---
 
-## 13. End-to-End Behaviour Suite Against Live Compose Stack
+## 13. E2E Test Harness & CI for the Live Compose Stack ✅ COMPLETE
 
-The repo currently has **no behavioural E2E coverage** against a running application. What exists is a liveness poll only: the CI "Smoke — Full-stack health check" job and `make smoke` bring up `docker compose` and curl `/health` + `/nginx-health`, and one backend `@pytest.mark.live_api` test hits `/health`. The Playwright specs in `frontend/tests/e2e/smoke.spec.ts` cover UI navigation only, target the Vite dev server (`localhost:5173`) rather than the composed nginx stack, are wired to **no** npm script, and are **never executed in CI** (`@playwright/test` is an unused devDependency).
+The repo currently has **no behavioural E2E coverage** against a running application. What exists is a liveness poll only: the CI "Smoke — Full-stack health check" job and `make smoke` bring up `docker compose` and curl `/health` + `/nginx-health`, and one backend `@pytest.mark.live_api` test hits `/health`. The Playwright specs in `frontend/tests/e2e/smoke.spec.ts` cover UI navigation only, target the Vite dev server (`localhost:5173`) rather than the composed nginx stack, are wired to **no** npm script, and are **never executed in CI** (`@playwright/test` is an unused devDependency). `make test-e2e` exists but only runs `cd frontend && npx playwright test` against the dev server.
 
-This item adds a real E2E suite that exercises Price Pulse's core value flow — add product URL → Celery scrape → price dedup → `PriceRecord` persisted → alert evaluation → notification dispatch — against a live `docker compose` stack, plus runs the existing Playwright UI journeys against that same stack in CI.
+This item delivers the **executable E2E harness and CI** that the Item 14 BDD catalogue runs inside — plus a thin self-check of its own. It does **not** author the behaviour scenarios or step definitions (those are Item 14). It provides: a dedicated e2e `docker compose` overlay, a deterministic fixture scrape target with a price-mutation hook, a webhook-sink for notification assertions, env-flag-gated test-control endpoints (force-scrape, reset-cooldown), the `make` lifecycle targets, and the CI jobs.
 
-**Depends on**: existing `docker compose` stack and CI smoke job (Item 10, complete). Behaviour scenarios should trace to the catalogue defined in Item 14.
+**Scope boundary with Item 14** (resolved): **Item 13 owns the harness + CI + a thin `@smoke` self-check**. **Item 14 owns the `.feature` catalogue + step definitions.** Item 14's executable steps depend on this harness; implement **harness (13) first**, then the catalogue (14). Item 13's own self-check reuses a `@smoke`-tagged subset of Item 14 features, so a first slice of Item 14 features must exist for the self-check to pass — sequence accordingly.
+
+**Depends on**: existing `docker compose` stack and CI smoke job (Item 10, complete). **Blocks**: Item 14 (its steps require this harness).
+
+### Implementation workflow (mandatory — complete in order)
+
+1. [ ] Create an isolated git worktree before writing any code:
+       `git worktree add ../pp-item-13 -b feat/item-13` — never work on `main`.
+2. [ ] Implement every task below inside that worktree — never directly on `main`.
+3. [ ] All quality gates must pass before opening a PR:
+       `make test` exits 0 and `make quality` exits 0
+       (see `CONTRIBUTING.md` → Pull Request Checklist).
+4. [ ] Raise a Pull Request: `gh pr create`
+       **No direct commits to the default branch (`main`) are permitted.**
+
+### Design decisions (resolved)
+
+- **Item 13/14 boundary — 13 owns harness + CI + thin smoke; 14 owns features + steps**: Item 13 provides everything needed to *run* executed BDD against live compose; Item 14 authors what is run. Rationale: isolates infrastructure churn from behaviour authoring while keeping each independently reviewable.
+
+- **e2e stack layering — new `docker-compose.e2e.yml` override**: applied as `docker compose -f docker-compose.yml -f docker-compose.e2e.yml`. The override adds the `fixture-server` and `webhook-sink` services and sets test-only env on backend + celery services: `E2E_TEST_HOOKS=true`, `SCRAPE_INTERVAL_MINUTES=1`, and a tiny `ALERT_COOLDOWN_HOURS`. Rationale: the production `docker-compose.yml` stays untouched and prod-safe; no test-only service or env ever ships in the base compose. Chosen over compose `profiles:` to avoid mixing test services into the prod file.
+
+- **Fixture scrape target — custom in-repo `fixture-server`; off-the-shelf `webhook-sink`**: a small in-repo Starlette/FastAPI app (`tests/e2e/fixture_server/`, its own image via `docker/fixture-server.Dockerfile`) serves canned product HTML through the real `generic` scraper path and exposes `PUT /fixtures/{slug}/price` to mutate the served price (and `GET /fixtures/{slug}` to serve it). The webhook-sink is an off-the-shelf request-capture image (e.g. a httpbin/request-bin-style container) polled over HTTP to confirm webhook deliveries. Rationale: price-mutation needs bespoke, versioned behaviour; webhook capture does not, so avoid custom code there.
+
+- **Test-control hooks — env-flag gated, in-process, e2e-profile only**: a FastAPI router mounted **only when `settings.E2E_TEST_HOOKS is True`** (new `E2E_TEST_HOOKS: bool = False` field in `core/config.py`), and that flag is set **only** by `docker-compose.e2e.yml`. Endpoints (namespaced under `/api/v1/_test/`): `POST /_test/products/{id}/scrape-sync` (force a scrape) and `POST /_test/alerts/{id}/reset-cooldown`. Rationale: no separate sidecar; the hooks are absent from the app's routes in every non-e2e environment because the router is never included.
+
+- **Force-scrape execution — synchronous inline hook, plus one real-cadence scenario**: `scrape-sync` runs the scrape task body **inline** (not via the Celery queue) and returns only after the `PriceRecord` is persisted and alerts evaluated, so steps get a definitive result with no polling. Item 14 additionally keeps **one** scenario that relies on the real 1-minute beat + bounded polling to prove the async scheduled path end-to-end. Rationale: determinism by default, with a single guarded test of the genuine async pipeline.
+
+- **`make` lifecycle — `test-e2e` owns up→run→down; `test-e2e-smoke` for the subset**: `make test-e2e` brings up the e2e overlay, waits for health, runs backend `pytest-bdd` + frontend `playwright-bdd`, then tears down. `make test-e2e-smoke` runs only `@smoke` scenarios. `make e2e-up` / `make e2e-down` manage the overlay for local iteration against an already-running stack. The existing dev-server-only `make test-e2e` is replaced. Rationale: one command for a clean full run; a fast subset command; and helpers for the inner-loop.
+
+- **CI — `@smoke` on every PR, full catalogue nightly + manual; liveness `smoke` job unchanged**: a new `e2e` CI job (`needs: build`) brings up the e2e overlay, waits for health, runs `make test-e2e-smoke`, and uploads the Playwright HTML report + traces as artifacts on failure. The **full** catalogue runs on a nightly `schedule:` and on `workflow_dispatch`. The existing `smoke` liveness job stays as the fast per-PR gate. Rationale: keeps PR feedback fast and low-flake while still gating the full suite regularly. Playwright browsers are installed in-job (`npx playwright install --with-deps chromium`).
+
+- **Data isolation — ephemeral volumes per run**: the e2e overlay uses throwaway postgres/redis volumes so each `make test-e2e` / CI run starts clean; scenario-level isolation (unique fixture URLs) is Item 14's concern. Rationale: no cross-run state; deterministic CI.
 
 ### Tasks
 
-**Backend pipeline E2E**
-- [ ] Create `backend/tests/e2e/` with `@pytest.mark.live_api` tests that drive the full pipeline against the running stack (not mocks): POST a product → trigger `scrape_product` → assert a `PriceRecord` is persisted → assert dedup on repeated identical HTML → assert alert evaluation triggers a `NotificationLog` when a threshold is crossed
-- [ ] Use a deterministic scrape target (local fixture HTTP server or a stubbed scraper `source_type`) so the flow is reproducible in CI without hitting real retail sites
-- [ ] Add a `make test-e2e` target that assumes a running stack (`make up` / `make dev`) and runs `uv run pytest -m live_api`
+**e2e compose overlay**
+- [x] Create `docker-compose.e2e.yml` overriding the base stack: add `fixture-server` + `webhook-sink` services on `price-pulse-net`; set `E2E_TEST_HOOKS=true`, `SCRAPE_INTERVAL_MINUTES=1`, tiny `ALERT_COOLDOWN_HOURS` on backend + celery services; use ephemeral (unnamed) postgres/redis volumes
+- [x] Add resource limits and healthchecks for the two new services consistent with the existing services
 
-**Frontend E2E against compose**
-- [ ] Add `test:e2e` and `test:e2e:ci` scripts to `frontend/package.json` (`playwright test`)
-- [ ] Point Playwright at the composed nginx stack via `E2E_BASE_URL=http://localhost` (not the Vite dev server); seed at least one product so the "navigate to product detail" journey is deterministic
-- [ ] Expand `smoke.spec.ts` (or add specs) to assert core behaviour, not just navigation: a price renders on the dashboard/chart, an alert can be created and appears in the list
+**Fixture server**
+- [x] Create `tests/e2e/fixture_server/` — a minimal Starlette/FastAPI app serving canned product HTML at `GET /fixtures/{slug}` (price embedded so the `generic` scraper's CSS selector extracts it) and mutating it via `PUT /fixtures/{slug}/price`
+- [x] Create `docker/fixture-server.Dockerfile` and wire the service into `docker-compose.e2e.yml`
 
-**CI integration**
-- [ ] Add a CI job (extend the `smoke` job or add an `e2e` job that `needs: build`) that brings up `docker compose`, waits for health, then runs backend `live_api` E2E and Playwright E2E against the live stack; upload the Playwright HTML report + traces as artifacts on failure
-- [ ] Ensure `make smoke` remains a fast liveness gate and E2E is a separate, clearly-named stage
+**Webhook sink**
+- [x] Add an off-the-shelf request-capture `webhook-sink` service to `docker-compose.e2e.yml`; document the capture-query URL step definitions will poll (Item 14 consumes)
+
+**Test-control hooks**
+- [x] Add `E2E_TEST_HOOKS: bool = False` to `core/config.py` `Settings` (+ `.env.example` note that it must stay false outside e2e)
+- [x] Create a test-control router (`api/v1/_test_hooks.py`) included in `main.py` **only when `settings.E2E_TEST_HOOKS`**: `POST /api/v1/_test/products/{id}/scrape-sync` (inline scrape, returns after `PriceRecord` + alert eval) and `POST /api/v1/_test/alerts/{id}/reset-cooldown`
+- [x] Assert the router is **absent** from the app's route table when the flag is false (guard against accidental prod exposure)
+
+**Make lifecycle**
+- [x] Replace the current dev-server `make test-e2e` with: `make e2e-up`, `make e2e-down`, `make test-e2e` (up → wait health → backend `pytest-bdd` + frontend `playwright-bdd` → down), and `make test-e2e-smoke` (`@smoke` subset)
+- [x] Update `frontend/playwright.config.ts` default/`E2E_BASE_URL` handling for `http://localhost` (compose nginx) when run under the e2e stack
+
+**CI**
+- [x] Add an `e2e` job to `.github/workflows/ci.yml` (`needs: build`): bring up the e2e overlay, wait for health, install Playwright browsers, run `make test-e2e-smoke`, upload Playwright report + traces on failure
+- [x] Add a nightly `schedule:` + `workflow_dispatch` trigger that runs the **full** catalogue (`make test-e2e`)
+- [x] Leave the existing `smoke` liveness job unchanged as the fast per-PR gate
+
+**Thin smoke self-check**
+- [x] Verify `make test-e2e-smoke` (the `@smoke` subset of Item 14 features) passes against the e2e overlay as Item 13's own harness acceptance check — coordinate with Item 14 so a first `@smoke` slice of features exists
+
+### Test strategy
+
+All four layers (Arrange-Assert-Act for backend tests):
+
+- **Unit** (isolated, no stack): the `fixture-server` app handlers (canned-HTML render, `PUT price` mutation) unit-tested with a test client; the test-control router mounting logic — assert the router **is** included when `E2E_TEST_HOOKS=true` and **absent** when false; the inline `scrape-sync` handler with a mocked scrape body.
+- **Integration** (real DB, no full compose): `scrape-sync` and `reset-cooldown` hooks against the Postgres testcontainer (`pg_async_client`) — force a scrape writes a `PriceRecord`; reset-cooldown clears the alert's cooldown state. `docker-compose.e2e.yml` validated with `docker compose config` (parses, references real services).
+- **Negative** (Arrange-Assert-Act): `scrape-sync` / `reset-cooldown` return 404 for unknown IDs; hooks return 404 (router absent) when `E2E_TEST_HOOKS` is false; `PUT /fixtures/{slug}/price` with a bad body → 422; webhook-sink unreachable → step-visible failure, not a hang.
+- **Live E2E** (against the running stack): `make test-e2e-smoke` runs the `@smoke` Item 14 scenarios against the e2e overlay and passes; the CI `e2e` job is green on PRs; the nightly full run is green. Acceptance: harness brings the stack to health, both runners execute, and artifacts upload on failure.
 
 ### Documentation
-- **`CLAUDE.md`** — update: document `make test-e2e`, the `test:e2e` frontend script, and that E2E runs against the compose stack; clarify the distinction between the liveness smoke check and behavioural E2E
-- **`CHANGELOG.md`** — add `### Added` entry: behavioural E2E suite (backend pipeline + Playwright UI journeys) running against the live compose stack in CI
+- **`docker-compose.e2e.yml`** — create: e2e overlay (fixture-server + webhook-sink + test-hook env)
+- **`docker/fixture-server.Dockerfile`** — create
+- **`tests/e2e/fixture_server/`** — create: canned-HTML + price-mutation service
+- **`backend/app/core/config.py`** — update: add `E2E_TEST_HOOKS` setting
+- **`backend/app/api/v1/_test_hooks.py`** — create: gated test-control router
+- **`backend/app/main.py`** — update: conditionally include the test-hook router
+- **`.env.example`** — update: `E2E_TEST_HOOKS` (must be false outside e2e) note
+- **`frontend/playwright.config.ts`** — update: `E2E_BASE_URL` for the compose nginx stack
+- **`Makefile`** — update: replace `test-e2e`; add `e2e-up`, `e2e-down`, `test-e2e-smoke`
+- **`.github/workflows/ci.yml`** — update: `e2e` job (@smoke on PR) + nightly/manual full-catalogue trigger
+- **`CLAUDE.md`** — update: document the e2e overlay, `make test-e2e`/`test-e2e-smoke`/`e2e-up`/`e2e-down`, `E2E_TEST_HOOKS`, and the harness/behaviour split between Items 13 and 14
+- **`CHANGELOG.md`** — add `### Added` entry: E2E test harness (e2e compose overlay, fixture server with price-mutation, webhook sink, gated test-control hooks, `make` lifecycle, CI e2e job)
 
 ---
 
-## 14. Standardised E2E Behaviour Specification in Documentation
+## 14. Standardised, Executed E2E Behaviour Specification (BDD) ✅ COMPLETE
 
-The repo has **no standardised definition of expected end-to-end behaviour**. Behaviour intent currently lives only as ad-hoc prose inside `TODO.md` "Test strategy" / "Live E2E" subsections and the tier description in `CLAUDE.md` — there is no scenario catalogue, no Gherkin/acceptance-criteria format, and nothing traceable that the Item 13 tests can be checked against.
+The repo has **no standardised definition of expected end-to-end behaviour**. Behaviour intent currently lives only as ad-hoc prose inside `TODO.md` "Test strategy" / "Live E2E" subsections and the tier description in `CLAUDE.md` — there is no scenario catalogue, no Gherkin format, and nothing traceable or executable.
 
-This item defines the expected E2E behaviour of Price Pulse in a **standardised, executable-adjacent format** (Given/When/Then scenarios) under `docs/`, so behaviour is specified once and both the backend pipeline E2E and the Playwright journeys (Item 13) trace to it.
+This item defines the expected E2E behaviour of Price Pulse as a **standardised Gherkin catalogue that is executed as BDD** (`pytest-bdd` for backend journeys, `playwright-bdd` for frontend UI journeys) against the **live `docker compose` stack**. The `.feature` files are the single source of truth for behaviour; their step definitions are the executable E2E tests. The full catalogue is authored here — including non-functional scenarios (scheduling cadence, per-domain rate limiting, notification-channel variants) made deterministic via test hooks.
 
-**Depends on**: none to author the spec; Item 13 consumes it (each E2E test references a scenario ID).
+**Scope boundary with Item 13** (resolved): **Item 14 owns the `.feature` catalogue AND the step definitions** (the executable glue). **Item 13 owns the test harness and CI** — the e2e `docker compose` profile, the fixture HTTP server, the webhook-sink service, seed/fixture data, and the CI job that brings the stack up and invokes the runners. Item 14's executable steps therefore **depend on Item 13's harness contract** (see Design decisions); the two items should be implemented together, harness first.
+
+**Depends on**: Item 13 (E2E harness: e2e compose profile, fixture server with price-mutation endpoint, webhook-sink service, `make test-e2e` runner, CI job). Item 14 authors features + steps that run inside that harness.
+
+### Implementation workflow (mandatory — complete in order)
+
+1. [ ] Create an isolated git worktree before writing any code:
+       `git worktree add ../pp-item-14 -b feat/item-14` (a `feat/item-14-e2e-behaviour-spec` branch already exists from plan-review; reuse it or rebranch — never work on `main`).
+2. [ ] Implement every task below inside that worktree — never directly on `main`.
+3. [ ] All quality gates must pass before opening a PR:
+       `make test` exits 0 and `make quality` exits 0
+       (see `CONTRIBUTING.md` → Pull Request Checklist).
+4. [ ] Raise a Pull Request: `gh pr create`
+       **No direct commits to the default branch (`main`) are permitted.**
+
+### Design decisions (resolved)
+
+- **Execution model — executed BDD, not a traceable-only spec**: `.feature` files are executed directly. Backend scenarios run under `pytest-bdd`; frontend UI scenarios run under `playwright-bdd`. Rationale: the spec and its verification never drift because the Gherkin *is* the test.
+
+- **Item 13/14 boundary — 14 owns features + step definitions; 13 owns harness + CI**: Item 14 delivers `docs/behaviour/*.feature` and their step-definition modules. Item 13 delivers the runtime the steps need (e2e compose profile, fixture server, webhook sink, seed data, `make test-e2e`, CI job). Rationale: keeps the behaviour catalogue and its glue in one reviewable unit while isolating infrastructure churn in Item 13.
+
+- **Feature-file location — `docs/behaviour/` is canonical; runners point there**: `.feature` files live under `docs/behaviour/` as the single source of truth and remain browsable as documentation. `pytest-bdd`'s `scenarios("../../docs/behaviour/…")` (or a configured `bdd_features_base_dir`) and `playwright-bdd`'s `defineBddConfig({ features: '../docs/behaviour/**/*.feature' })` are pointed at that directory. Step definitions live beside the tests: backend in `backend/tests/e2e/steps/`, frontend in `frontend/tests/e2e/steps/`. Rationale: satisfies both "spec lives in docs/" and runner discoverability without duplicating files.
+
+- **Scenario ID convention — `PP-E2E-NNN`**: every `Scenario`/`Scenario Outline` carries a stable `@PP-E2E-NNN` Gherkin tag. `docs/behaviour/README.md` documents the convention, ID allocation, and the tag→step-module map. Rationale: stable IDs give traceability independent of scenario wording.
+
+- **Deterministic scrape target — fixture HTTP server with mutable price endpoint** *(harness, Item 13; contract consumed here)*: a compose service serves canned product HTML through the real `generic` scraper path; a control endpoint (e.g. `PUT /fixtures/{slug}/price`) changes the served price so a scenario can force a drop/rise and trigger an alert. Steps register products whose URL points at this fixture server. Rationale: exercises the real fetch→hash→dedup→extract path deterministically; real retail sites are non-deterministic, bot-protected, and cannot be made to drop a price on command.
+
+- **Time/cadence hooks — dedicated e2e compose profile with tiny intervals + control endpoints** *(harness, Item 13; contract consumed here)*: the e2e profile sets `SCRAPE_INTERVAL_MINUTES=1` and a tiny `ALERT_COOLDOWN_HOURS` (both already `Settings` fields) so beat cadence and cooldown resolve in seconds. Gated test-only control endpoints (enabled only when an `E2E_TEST_HOOKS=true` flag is set) expose: force a scrape now, and reset an alert's cooldown. Rationale: makes scheduling-cadence and 24h-cooldown scenarios observable without wall-clock waits or flakiness; the flag keeps the hooks out of production behaviour.
+
+- **Assertion & isolation — public API only, unique data per scenario**: steps assert **exclusively through the public REST API and UI** — no direct DB/Redis peeking from step definitions. Each scenario provisions its own product via a **unique fixture URL** (e.g. slug suffixed per scenario) so scenarios are independent and need no global reset. Rationale: tests verify observable contract behaviour, stay decoupled from internal storage, and avoid cross-scenario interference on the shared live stack.
+
+- **Notification-channel assertions require a NotificationLog read surface** (scope addition): notification delivery is today only observable via `NotificationLog` rows, but **no public endpoint exposes them** (routes exist only for products/prices/alerts). Add a read endpoint `GET /api/v1/alerts/{alert_id}/notifications` (paginated, `NotificationLogRead` schema) so `email`/`whatsapp` stub deliveries (`status='sent'`) and `webhook` deliveries are assertable via the public API. The `webhook` channel additionally targets the harness **webhook-sink** service URL so the scenario can confirm the POST was received. Rationale: "public API only" assertions need a supported way to observe notifications; a real read endpoint is preferable to a test-only backdoor and is independently useful.
+
+- **Catalogue breadth — full, including non-functional, all executed**: happy-path journeys, negative/error paths, and non-functional scenarios are all authored and all executed via the hooks above. Anything genuinely un-executable is out of scope rather than written as a skipped stub. Rationale: user selected "Execute all via test hooks" — the catalogue's value is that every documented behaviour is enforced.
+
+### Scenario catalogue (author under `docs/behaviour/`, all executed)
+
+Grouped into `.feature` files; every scenario gets a `@PP-E2E-NNN` tag. Indicative coverage:
+
+- **`product_tracking.feature`** — add a tracked product (201); reject duplicate URL (409); deactivate/reactivate; delete cascades (product gone → its prices/alerts 404).
+- **`scraping.feature`** — on-demand scrape (`POST /products/{id}/scrape` → 202) produces a `PriceRecord` with `extraction_status=ok`; scheduled scrape fires via 1-minute beat and produces a record (cadence, non-functional); identical fixture HTML on a second scrape is **deduplicated** (no new record); a fixture price change produces a **new** record.
+- **`scraping_failures.feature`** *(negative)* — fixture returns 404/500 → `PriceRecord` with `extraction_status=http_error`, no alert; fixture HTML with no price → `extraction_failed`, alert evaluation skipped.
+- **`price_history.feature`** — history is queryable and **paginated** (`limit`≤100/`offset`); `limit=101` → 422 (non-functional edge); date-range `from_dt`/`to_dt` filtering.
+- **`alerts.feature`** — create `below`/`above` alerts; a fixture price crossing the threshold triggers a notification (`NotificationLog` `status=sent` via the new read endpoint); no crossing → no notification; **cooldown**: second crossing within cooldown does not re-notify, then does after cooldown reset (non-functional).
+- **`notification_channels.feature`** — `email` stub → `status=sent`; `webhook` → sink service receives the POST and `status=sent`; `webhook_url` missing → `status=failed`; `whatsapp` stub → `status=sent`; `whatsapp_number` missing → `status=failed` *(negative)*.
+- **`rate_limiting.feature`** *(non-functional)* — repeated scrapes of the same fixture domain honour the per-domain min-delay (observable via scrape timing/`202` throttling behaviour exposed by the harness).
+- **`ui_journeys.feature`** *(playwright-bdd)* — dashboard renders a product with its latest price; product detail renders the price-history chart; alert manager creates an alert and it appears in the list.
 
 ### Tasks
 
-- [ ] Create `docs/behaviour/` with a set of Gherkin `.feature` files (or a single `price-pulse.feature`) capturing the core user journeys in Given/When/Then form: add a tracked product, scheduled + on-demand scrape produces a price record, duplicate HTML is deduplicated, price history is queryable/paginated, an alert threshold crossing triggers a notification, the dashboard renders price history and alert status
-- [ ] Assign each scenario a stable ID (e.g. `PP-E2E-001`) and document the format/convention in a `docs/behaviour/README.md` (how scenarios are written, how they map to Item 13 tests)
-- [ ] Add a traceability note linking each Item 13 E2E test to the scenario ID it verifies (docstring/comment referencing `PP-E2E-NNN`)
-- [ ] Decide and record whether scenarios are executed directly (e.g. `pytest-bdd` / Playwright-BDD) or serve as the human-readable spec that hand-written E2E tests trace to — capture the decision as a short ADR under `docs/decisions/`
+**Tooling**
+- [x] Add `pytest-bdd` to `backend/pyproject.toml` `[dependency-groups] dev`; register a `live_api` (or new `e2e`) marker usage for the step tests
+- [x] Add `playwright-bdd` to `frontend/package.json` devDependencies; add `bddgen`/`playwright test` wiring and a `test:e2e:bdd` script
+- [x] Configure `pytest-bdd` feature discovery to point at `docs/behaviour/` (`bdd_features_base_dir` in `pytest.ini`/`pyproject.toml`); configure `playwright-bdd` `defineBddConfig({ features: '../docs/behaviour/**/*.feature' })`
+
+**Feature catalogue**
+- [x] Author `docs/behaviour/*.feature` per the Scenario catalogue above (Given/When/Then), each `Scenario` tagged `@PP-E2E-NNN`
+- [x] Create `docs/behaviour/README.md` documenting the Gherkin conventions, the `PP-E2E-NNN` ID scheme, ID allocation, the features→step-modules map, and how to run the suite (`make test-e2e`)
+
+**Backend step definitions** (`backend/tests/e2e/steps/`)
+- [x] Implement `pytest-bdd` step definitions covering all backend `.feature` scenarios, asserting **only via the public REST API** (httpx against the running stack), driving the fixture server's price-mutation endpoint and the gated control hooks for scrape/cooldown
+- [x] Provision unique per-scenario fixture product URLs (Background/fixture) so scenarios are isolated without a global reset
+
+**Frontend step definitions** (`frontend/tests/e2e/steps/`)
+- [x] Implement `playwright-bdd` step definitions for `ui_journeys.feature` against the composed nginx stack (`E2E_BASE_URL=http://localhost`), seeding the required product via the API before UI assertions
+
+**Notification read surface** (needed for public-API notification assertions)
+- [x] Add `GET /api/v1/alerts/{alert_id}/notifications` — paginated `NotificationLogRead` list (new `NotificationLogRead` schema in `schemas/notification.py`; service method in a notification/query service; route in `api/v1/alerts.py`)
+
+**Traceability**
+- [x] Ensure every step-definition module / scenario references its `@PP-E2E-NNN` tag so the executed test maps 1:1 to the catalogue; add a short traceability table to `docs/behaviour/README.md`
+
+**Harness dependencies (tracked in Item 13, verified here)**
+- [x] Confirm the Item 13 e2e compose profile, fixture server (+ price-mutation endpoint), webhook-sink service, `E2E_TEST_HOOKS` control endpoints, `make test-e2e`, and CI job exist and satisfy the contract these steps assume; file the gaps as Item 13 tasks if not
+
+### Test strategy
+
+All four layers (Arrange-Assert-Act for backend tests):
+
+- **Unit** (isolated, no stack): the new `GET /alerts/{id}/notifications` route handler and `NotificationLogRead` schema — mock the session/service; assert pagination envelope, empty list, and 404 for unknown alert. Any step-helper utilities (e.g. unique-URL generator, fixture-price client) unit-tested in isolation.
+- **Integration** (real DB, no full compose): the notification-history endpoint against the Postgres testcontainer (`pg_async_client`) — seed `NotificationLog` rows, assert ordering and pagination. `pytest-bdd` feature-discovery config validated (features are collected).
+- **Negative** (Arrange-Assert-Act): `scraping_failures.feature` and the missing-`webhook_url`/missing-`whatsapp_number` scenarios in `notification_channels.feature`; `limit=101` → 422; unknown `alert_id` on the notifications endpoint → 404. Feature file with an unknown `@PP-E2E-NNN`/undefined step → runner fails loudly (no silently-skipped scenarios).
+- **Live E2E** (`@pytest.mark.live_api` / playwright-bdd against the running stack): the entire executed catalogue is this layer — it runs against the Item 13 e2e compose profile via `make test-e2e` and in the CI e2e job. Acceptance: every `@PP-E2E-NNN` scenario passes; on failure, Playwright HTML report + traces are uploaded as CI artifacts.
 
 ### Documentation
-- **`docs/behaviour/`** — create: standardised Gherkin scenario catalogue + README describing the convention
-- **`docs/decisions/`** — add ADR: chosen approach for E2E behaviour specification (executed BDD vs. traceable spec)
-- **`CLAUDE.md`** — update: reference `docs/behaviour/` as the source of truth for expected E2E behaviour; note the `PP-E2E-NNN` traceability convention
-- **`CHANGELOG.md`** — add `### Added` entry: standardised E2E behaviour specification (Gherkin scenario catalogue with traceability IDs)
+- **`docs/behaviour/`** — create: executed Gherkin scenario catalogue (`*.feature`) + `README.md` (conventions, `PP-E2E-NNN` scheme, features→steps map, run instructions)
+- **`backend/tests/e2e/steps/`** — create: `pytest-bdd` step definitions
+- **`frontend/tests/e2e/steps/`** — create: `playwright-bdd` step definitions
+- **`backend/pyproject.toml`** — update: add `pytest-bdd` dev dep + feature-discovery config
+- **`frontend/package.json`** — update: add `playwright-bdd` dev dep + `test:e2e:bdd` script
+- **`backend/app/schemas/notification.py`** — update: add `NotificationLogRead`
+- **`backend/app/api/v1/alerts.py`** — update: add `GET /alerts/{alert_id}/notifications`
+- **`docs/decisions/`** — add ADR: executed-BDD approach (pytest-bdd + playwright-bdd), `docs/behaviour/` as canonical feature location, public-API-only assertion strategy, and the test-hook mechanisms
+- **`CLAUDE.md`** — update: reference `docs/behaviour/` as the source of truth for expected E2E behaviour; document the `PP-E2E-NNN` convention and `make test-e2e`; note the executed-BDD tooling
+- **`CHANGELOG.md`** — add `### Added` entry: executed E2E behaviour specification (Gherkin catalogue run via pytest-bdd + playwright-bdd against the live compose stack; `PP-E2E-NNN` traceability; notification-history read endpoint)
 
 ---
 

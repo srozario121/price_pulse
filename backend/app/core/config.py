@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     SCRAPE_MIN_DELAY_SECONDS: int = 2
     ALERT_COOLDOWN_HOURS: int = 24
 
+    # ── E2E test hooks ────────────────────────────────────────────────────────
+    # Mounts gated test-only control endpoints under /api/v1/_test/ when true.
+    # MUST stay false outside the e2e docker-compose overlay — it is set to true
+    # only by docker-compose.e2e.yml so the hooks never exist in production.
+    E2E_TEST_HOOKS: bool = False
+
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Env var: comma-separated string "http://localhost:5173,https://..."
     # Defaults to ["*"] when DEBUG=True; required (non-empty) in production.

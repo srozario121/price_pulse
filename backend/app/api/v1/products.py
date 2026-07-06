@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.product import Product
 from app.schemas.common import PaginatedResponse
@@ -27,6 +28,36 @@ router = APIRouter(prefix="/products", tags=["products"])
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _register_schedule_best_effort(product_id: int) -> None:
+    """Register the per-product scrape schedule; never fail the request on error.
+
+    Scheduling is a background concern — a transient Redis/RedBeat issue must not
+    500 the user-facing create. On failure the worker's ``startup_sync_schedules``
+    reconciles all active products at its next start, so this is a best-effort
+    fast path, not the sole guarantee.
+    """
+    from app.tasks.schedule import register_product_schedule
+
+    try:
+        register_product_schedule(product_id, settings.SCRAPE_INTERVAL_MINUTES)
+    except Exception as exc:  # noqa: BLE001 — best-effort; log and continue
+        logger.warning(
+            "product_schedule_registration_failed", product_id=product_id, error=str(exc)
+        )
+
+
+def _deregister_schedule_best_effort(product_id: int) -> None:
+    """Remove the per-product scrape schedule; never fail the request on error."""
+    from app.tasks.schedule import deregister_product_schedule
+
+    try:
+        deregister_product_schedule(product_id)
+    except Exception as exc:  # noqa: BLE001 — best-effort; log and continue
+        logger.warning(
+            "product_schedule_deregistration_failed", product_id=product_id, error=str(exc)
+        )
 
 
 async def _get_product_or_404(product_id: int, db: AsyncSession) -> Product:
@@ -72,6 +103,8 @@ async def create_product(
     db.add(product)
     await db.flush()
     await db.refresh(product)
+
+    _register_schedule_best_effort(product.id)
 
     logger.info("product_created", product_id=product.id, url=product.url)
     return product
@@ -161,4 +194,5 @@ async def delete_product(
 
     # SQL DELETE lets the DB cascade handle child records (price_record, price_alert, …)
     await db.execute(delete(Product).where(Product.id == product_id))
+    _deregister_schedule_best_effort(product_id)
     logger.info("product_deleted", product_id=product_id)

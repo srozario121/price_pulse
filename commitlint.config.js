@@ -25,6 +25,8 @@ module.exports = {
         'todo',
         'quality',
         'plan-review',
+        'e2e',
+        'security',
       ],
     ],
     // Subject must not end with a period

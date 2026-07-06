@@ -17,9 +17,18 @@ Design decisions:
 
 from __future__ import annotations
 
+import celery_aio_pool
 from celery import Celery
 
 from app.core.config import settings
+
+# Full dotted path to celery-aio-pool's AsyncIOPool; Celery resolves this via
+# symbol_by_name when it builds the worker pool. (The "custom" alias +
+# CELERY_CUSTOM_WORKER_POOL indirection does not resolve when set via config.)
+_AIO_POOL = "celery_aio_pool.pool:AsyncIOPool"
+
+# Patch Celery's task tracer so it awaits coroutines returned by async def tasks.
+celery_aio_pool.patch_celery_tracer()
 
 celery_app = Celery(
     "price_pulse",
@@ -30,11 +39,11 @@ celery_app = Celery(
 
 celery_app.conf.update(
     # ── Worker pool ───────────────────────────────────────────────────────────
-    # "solo" pool runs tasks in the main thread using asyncio.get_event_loop(),
-    # which is the correct approach for async def tasks in Celery 5.x.
-    # celery.concurrency.aio was planned but never shipped in mainline Celery;
-    # "solo" is the idiomatic replacement for async-first task workloads.
-    worker_pool="solo",
+    # celery-aio-pool's AsyncIOPool awaits the coroutines returned by the
+    # project's native `async def` tasks. The stock "solo"/prefork pools do NOT
+    # await coroutines — tasks would fail with "coroutine is not JSON
+    # serializable" and never run (scrape, notifications).
+    worker_pool=_AIO_POOL,
     # ── Time limits ───────────────────────────────────────────────────────────
     task_soft_time_limit=120,
     task_time_limit=150,
@@ -47,7 +56,11 @@ celery_app.conf.update(
     enable_utc=True,
     # ── Queue routing ─────────────────────────────────────────────────────────
     # Amazon tasks are dispatched to 'playwright' queue at call-site.
-    # All other tasks use 'default'.
+    # All other tasks use 'default'. task_default_queue MUST be 'default' so the
+    # main worker (started with no -Q) consumes the same queue the routes target
+    # — otherwise routed tasks (scrape, notify) sit unconsumed in 'default' while
+    # the worker listens on Celery's built-in 'celery' queue.
+    task_default_queue="default",
     task_routes={
         "app.tasks.scrape.scrape_product": {"queue": "default"},
         "app.tasks.notify.send_notification": {"queue": "default"},

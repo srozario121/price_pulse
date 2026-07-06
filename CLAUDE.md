@@ -81,6 +81,12 @@ make validate-nginx              # nginx -t syntax check of docker/nginx.conf vi
 make scan                        # Trivy CRITICAL CVE scan on built backend + frontend images
 make smoke                       # full-stack smoke test: up → health poll → nginx-health → down
 
+# Executed E2E behaviour (BDD) — runs the docs/behaviour/ Gherkin catalogue
+make test-e2e                    # up e2e overlay → backend pytest-bdd + frontend playwright-bdd → down
+make test-e2e-smoke              # only @smoke-tagged scenarios (fast; runs on every PR)
+make e2e-up                      # bring the e2e compose overlay up (fixture-server + webhook-sink + test hooks)
+make e2e-down                    # tear the e2e overlay down and remove volumes
+
 # Code analysis
 make structure                   # show backend package tree with module counts
 ```
@@ -165,8 +171,17 @@ User adds URL → POST /api/v1/products
 backend/tests/
 ├── unit/        # isolated, no DB — mock SQLAlchemy session and httpx
 ├── integration/ # real DB (SQLite in-memory or test postgres container)
-└── e2e/         # @pytest.mark.live_api — hit real product URLs; skipped by default
+└── e2e/         # executed BDD (pytest-bdd) against the live e2e compose stack;
+                 # excluded from the default run — invoke via make test-e2e
 ```
+
+**Expected E2E behaviour is specified in `docs/behaviour/`** as executed Gherkin
+(the single source of truth). Backend scenarios run under `pytest-bdd`
+(`backend/tests/e2e/steps/`), frontend UI journeys under `playwright-bdd`
+(`frontend/tests/e2e/steps/`); both runners are pointed at `docs/behaviour/`.
+Each scenario carries a stable `@PP-E2E-NNN` ID and the `@smoke` subset runs on
+every PR. See `docs/behaviour/README.md`. The suite runs against the Item 13
+e2e overlay (`make test-e2e`); Item 13 owns the harness, Item 14 the catalogue.
 
 All tests use **Arrange-Assert-Act** pattern:
 ```python
@@ -202,6 +217,7 @@ Copy `.env.example` to `.env`. Key variables:
 | `CORS_ORIGINS` | `["*"]` when DEBUG=true, required otherwise | Allowed CORS origins (comma-separated) |
 | `SCRAPE_INTERVAL_MINUTES` | `30` | Default Celery Beat interval |
 | `LOG_LEVEL` | `INFO` | structlog level |
+| `E2E_TEST_HOOKS` | `false` | Mounts gated `/api/v1/_test/` hooks; set true **only** by `docker-compose.e2e.yml` |
 | `VITE_API_URL` | `http://localhost:8000` | Frontend API base URL (Vite build-time var) |
 
 ## Quality Thresholds
