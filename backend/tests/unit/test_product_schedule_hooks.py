@@ -24,7 +24,9 @@ def test_register_best_effort_calls_register_with_configured_interval() -> None:
 
 def test_register_best_effort_swallows_errors() -> None:
     # Arrange
-    with patch("app.tasks.schedule.register_product_schedule", side_effect=RuntimeError("redis down")):
+    with patch(
+        "app.tasks.schedule.register_product_schedule", side_effect=RuntimeError("redis down")
+    ):
         # Act / Assert — must not raise
         products_api._register_schedule_best_effort(7)
 

@@ -43,7 +43,9 @@ def _register_schedule_best_effort(product_id: int) -> None:
     try:
         register_product_schedule(product_id, settings.SCRAPE_INTERVAL_MINUTES)
     except Exception as exc:  # noqa: BLE001 — best-effort; log and continue
-        logger.warning("product_schedule_registration_failed", product_id=product_id, error=str(exc))
+        logger.warning(
+            "product_schedule_registration_failed", product_id=product_id, error=str(exc)
+        )
 
 
 def _deregister_schedule_best_effort(product_id: int) -> None:
