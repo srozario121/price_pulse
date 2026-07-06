@@ -391,7 +391,11 @@ jobs:
 
   # ===========================================================================
   # Job 7 — Security scanning
-  # Scans Python and Node.js dependencies for CRITICAL CVEs.
+  # Python (pip-audit): fails on ANY known advisory — deliberate strict posture
+  #   to force staying current. pip-audit has no severity filter; suppress a
+  #   specific, justified advisory with `--ignore-vuln <ID>` if ever needed.
+  # Node (npm audit): fails on CRITICAL only (dev-tooling churn keeps a long tail
+  #   of moderate/high advisories that would otherwise be perpetual noise).
   # Runs in parallel with other jobs (no needs: dependency).
   # ===========================================================================
   security:
@@ -411,7 +415,7 @@ jobs:
         run: uv sync --group dev
         working-directory: backend
 
-      - name: Scan Python deps for CVEs
+      - name: Scan Python deps for CVEs (fails on any known advisory)
         run: uv run pip-audit
         working-directory: backend
 
