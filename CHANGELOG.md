@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make test-e2e` (up → pytest-bdd + playwright-bdd → down), `make test-e2e-smoke` (@smoke subset), `make e2e-up`, `make e2e-down`; CI `e2e` job runs `@smoke` on every PR/push and the full catalogue nightly + on `workflow_dispatch`
 - `docs/decisions/e2e-behaviour-spec.md`: ADR for the executed-BDD approach; `pytest-bdd` (backend) and `playwright-bdd` (frontend) added as dev dependencies
 
+### Security
+
+- Bumped dependencies flagged by `pip-audit` to their fix versions: `python-multipart` ≥0.0.31 (CVE-2026-53538/53539/53540), `pydantic-settings` ≥2.14.2 (GHSA-4xgf-cpjx-pc3j), and — via `[tool.uv] constraint-dependencies` — `starlette` ≥1.3.1 (PYSEC-2026-248/249), `msgpack` ≥1.2.1 (GHSA-6v7p-g79w-8964), `pip` ≥26.1.2 (PYSEC-2026-196). `pip-audit` now reports no known vulnerabilities.
+
 ### Fixed
 
 - **Celery never executed its `async def` tasks** (surfaced by the new executed E2E suite): the `solo`/prefork pools do not await coroutines, so `scrape_product`, `send_notification`, and schedule tasks failed with "coroutine is not JSON serializable" and never ran (notifications and scheduled scrapes were silently broken in the deployed stack). Fixed by adopting `celery-aio-pool`'s `AsyncIOPool` (`worker_pool="custom"` + `patch_celery_tracer()`).
