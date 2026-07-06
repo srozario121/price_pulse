@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Newly-added products were never scheduled for scraping** (surfaced by the full E2E catalogue's beat-cadence scenario): `create_product` did not register a RedBeat schedule and there is no global sweep task, so a product added via the API was only ever picked up after a worker restart ran `startup_sync_schedules`. `create_product`/`delete_product` now register/deregister the per-product schedule (best-effort: a Redis error is logged, never fails the request; the worker's startup sync still reconciles on restart).
 - **Celery never executed its `async def` tasks** (surfaced by the new executed E2E suite): the `solo`/prefork pools do not await coroutines, so `scrape_product`, `send_notification`, and schedule tasks failed with "coroutine is not JSON serializable" and never ran (notifications and scheduled scrapes were silently broken in the deployed stack). Fixed by adopting `celery-aio-pool`'s `AsyncIOPool` (`worker_pool="custom"` + `patch_celery_tracer()`).
 - **Notification/scrape tasks were routed to an unconsumed queue**: `task_routes` targeted a `default` queue while the worker (no `-Q`) consumed Celery's built-in `celery` queue. Set `task_default_queue="default"` so routed tasks are actually consumed.
 - **Celery worker could be permanently broken by a startup DB hiccup**: `on_worker_ready` let `startup_sync_schedules()` raise out of the signal handler, corrupting the async worker's event loop. It is now best-effort (logged, non-fatal).
