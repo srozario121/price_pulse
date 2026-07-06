@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Celery never executed its `async def` tasks** (surfaced by the new executed E2E suite): the `solo`/prefork pools do not await coroutines, so `scrape_product`, `send_notification`, and schedule tasks failed with "coroutine is not JSON serializable" and never ran (notifications and scheduled scrapes were silently broken in the deployed stack). Fixed by adopting `celery-aio-pool`'s `AsyncIOPool` (`worker_pool="custom"` + `patch_celery_tracer()`).
+- **Notification/scrape tasks were routed to an unconsumed queue**: `task_routes` targeted a `default` queue while the worker (no `-Q`) consumed Celery's built-in `celery` queue. Set `task_default_queue="default"` so routed tasks are actually consumed.
+- **Celery worker could be permanently broken by a startup DB hiccup**: `on_worker_ready` let `startup_sync_schedules()` raise out of the signal handler, corrupting the async worker's event loop. It is now best-effort (logged, non-fatal).
 - `docker/backend.Dockerfile`, `docker/celery-playwright.Dockerfile`: replaced `uv sync --no-install-workspace` with `uv export --package price-pulse-backend | uv pip install` to fix empty virtualenv — `--no-install-workspace` from the workspace root resolves only the root package (no deps) and produces an empty `.venv`, leaving celery and all other runtime dependencies uninstalled
 
 ### Changed

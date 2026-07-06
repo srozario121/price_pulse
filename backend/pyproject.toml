@@ -20,6 +20,7 @@ dependencies = [
     "playwright>=1.44",
     "parsel>=1.9",
     "celery-redbeat>=0.13",
+    "celery-aio-pool>=0.1.0rc8",
 ]
 
 [dependency-groups]

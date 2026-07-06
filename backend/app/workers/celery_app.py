@@ -17,9 +17,20 @@ Design decisions:
 
 from __future__ import annotations
 
-from celery import Celery
+import os
 
-from app.core.config import settings
+# Select the asyncio worker pool BEFORE Celery resolves the pool implementation.
+# Celery maps the "custom" pool alias to the class named here; the aio pool
+# awaits coroutine results so native `async def` tasks actually execute.
+os.environ.setdefault("CELERY_CUSTOM_WORKER_POOL", "celery_aio_pool.pool:AsyncIOPool")
+
+import celery_aio_pool  # noqa: E402
+from celery import Celery  # noqa: E402
+
+from app.core.config import settings  # noqa: E402
+
+# Patch Celery's task tracer so it awaits coroutines returned by async def tasks.
+celery_aio_pool.patch_celery_tracer()
 
 celery_app = Celery(
     "price_pulse",
@@ -30,11 +41,12 @@ celery_app = Celery(
 
 celery_app.conf.update(
     # ── Worker pool ───────────────────────────────────────────────────────────
-    # "solo" pool runs tasks in the main thread using asyncio.get_event_loop(),
-    # which is the correct approach for async def tasks in Celery 5.x.
-    # celery.concurrency.aio was planned but never shipped in mainline Celery;
-    # "solo" is the idiomatic replacement for async-first task workloads.
-    worker_pool="solo",
+    # "custom" resolves (via CELERY_CUSTOM_WORKER_POOL, set above) to
+    # celery-aio-pool's AsyncIOPool, which awaits the coroutines returned by the
+    # project's native `async def` tasks. The stock "solo"/prefork pools do NOT
+    # await coroutines — tasks would fail with "coroutine is not JSON
+    # serializable" and never run (scrape, notifications).
+    worker_pool="custom",
     # ── Time limits ───────────────────────────────────────────────────────────
     task_soft_time_limit=120,
     task_time_limit=150,

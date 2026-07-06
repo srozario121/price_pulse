@@ -29,10 +29,11 @@ def test_hard_time_limit() -> None:
     assert celery_app.conf.task_time_limit == 150
 
 
-def test_worker_pool_is_solo() -> None:
+def test_worker_pool_is_custom_async() -> None:
     from app.workers.celery_app import celery_app
 
-    assert celery_app.conf.worker_pool == "solo"
+    # "custom" resolves to celery-aio-pool's AsyncIOPool so async def tasks are awaited.
+    assert celery_app.conf.worker_pool == "custom"
 
 
 def test_redbeat_redis_url() -> None:
