@@ -173,7 +173,8 @@ format:         ## Format backend (ruff format) and frontend (prettier)
 .PHONY: quality
 quality:        ## Run full quality gate: pytest + radon + vitest + coverage-overlap; exits 1 on threshold violation
 	@mkdir -p logs/quality
-	@TIMESTAMP=$$(date +%Y%m%dT%H%M%S); \
+	@set -e; \
+	  TIMESTAMP=$$(date +%Y%m%dT%H%M%S); \
 	  REPORT_DIR=logs/quality/$$TIMESTAMP; \
 	  mkdir -p $$REPORT_DIR; \
 	  echo "=== Backend tests + coverage ==="; \

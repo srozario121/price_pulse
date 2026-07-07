@@ -14,7 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Intra-tier coverage overlap detection — flags any source line covered by two or more test functions in the *same* tier (both `tests/unit/` or both `tests/integration/`); cross-tier overlap is intentional and excluded.
 - Backend: `make quality` now tags coverage with `--cov-context=test` and emits `logs/quality/coverage-contexts.json` (`coverage json --show-contexts`); `backend/scripts/check_coverage_overlap.py` reads it and reports/enforces duplicates. `make check-coverage-overlap` runs it standalone.
 - Frontend: `scripts/check_coverage_overlap_frontend.sh` runs each `tests/unit/` + `tests/integration/` file in isolation to stage per-file Istanbul coverage, and `scripts/check_coverage_overlap_frontend.js` reports/enforces same-tier overlap. `make check-coverage-overlap-frontend` runs both.
-- Enforcement thresholds and baselines recorded in a new `[test-health]` section of `config/quality-thresholds.toml` (baseline captured 2026-07-07: backend 8, frontend 1112); both checks run at the end of `make quality` and exit 1 on net-new duplicates beyond the ceiling.
+- Enforcement thresholds and baselines recorded in a new `[test-health]` section of `config/quality-thresholds.toml` (captured on the CI runtime — Python 3.12 / Node 20 — since the count is version-sensitive: backend 680, frontend 1112); both checks run at the end of `make quality` and exit 1 on net-new duplicates beyond the ceiling.
+- New CI `quality` job runs `make quality` (backend coverage + radon complexity + intra-tier overlap enforcement) — previously `make quality` was a local/agent-only gate never run in CI.
+- Hardened the `make quality` recipe with `set -e` so a failing step (e.g. pytest below the coverage floor) aborts the target instead of the final command's exit status masking the failure.
 
 ### Fixed (Item 11)
 
