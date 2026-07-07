@@ -27,3 +27,18 @@ coverage_min_pct = 80
 
 # ESLint max warnings (0 = all warnings are errors)
 eslint_max_warnings = 0
+
+[test-health]
+
+# Intra-tier test coverage duplication — a source line covered by two or more
+# test functions in the *same* tier (both tests/unit/ or both tests/integration/)
+# without adding distinct assertions is waste. Cross-tier overlap is intentional
+# and not counted. Baselines captured 2026-07-07 on the current codebase.
+baseline_backend_duplicate_lines = 8
+baseline_frontend_duplicate_lines = 1112
+
+# Enforcement ceilings (zero tolerance for net-new duplicates from this point).
+# check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
+# actual count exceeds these; equal-or-below passes.
+max_intra_tier_duplicate_lines_backend = 8
+max_intra_tier_duplicate_lines_frontend = 1112

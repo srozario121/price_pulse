@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Item 11 — Test Suite Health & Coverage Deduplication)
+
+- Intra-tier coverage overlap detection — flags any source line covered by two or more test functions in the *same* tier (both `tests/unit/` or both `tests/integration/`); cross-tier overlap is intentional and excluded.
+- Backend: `make quality` now tags coverage with `--cov-context=test` and emits `logs/quality/coverage-contexts.json` (`coverage json --show-contexts`); `backend/scripts/check_coverage_overlap.py` reads it and reports/enforces duplicates. `make check-coverage-overlap` runs it standalone.
+- Frontend: `scripts/check_coverage_overlap_frontend.sh` runs each `tests/unit/` + `tests/integration/` file in isolation to stage per-file Istanbul coverage, and `scripts/check_coverage_overlap_frontend.js` reports/enforces same-tier overlap. `make check-coverage-overlap-frontend` runs both.
+- Enforcement thresholds and baselines recorded in a new `[test-health]` section of `config/quality-thresholds.toml` (baseline captured 2026-07-07: backend 8, frontend 1112); both checks run at the end of `make quality` and exit 1 on net-new duplicates beyond the ceiling.
+
+### Fixed (Item 11)
+
+- `check_quality.py` crashed (`TypeError: string indices must be integers`) when any module had measured functions: radon 6.x emits `hal --json` `functions` as a `{name: metrics}` dict, but the parser iterated it as a list of dicts. It now handles both shapes, so `make quality` completes instead of aborting before threshold evaluation.
+
 ### Added (Items 13 & 14 — E2E Harness + Executed Behaviour Specification)
 
 - `docs/behaviour/`: standardised, **executed** Gherkin behaviour catalogue (single source of truth) — `product_tracking`, `scraping`, `alerts`, `notification_channels`, and `ui_journeys` features with stable `@PP-E2E-NNN` IDs and a `@smoke` subset; `README.md` documents the ID convention and feature→step traceability

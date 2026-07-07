@@ -58,9 +58,13 @@ npm run test:run                 # vitest single run
 npm run test:coverage            # vitest with coverage
 
 # Quality gates
-make quality                     # backend radon + frontend vitest coverage report
+make quality                     # backend radon + frontend vitest coverage + intra-tier coverage overlap
 make lint                        # ruff (backend) + eslint (frontend)
 make format                      # ruff format (backend) + prettier (frontend)
+
+# Test suite health — intra-tier coverage duplication (also run inside make quality)
+make check-coverage-overlap          # backend: flag same-tier tests covering the same source line
+make check-coverage-overlap-frontend # frontend: per-file vitest runs, then same-tier overlap report
 
 # Database migrations
 make migrate                     # apply pending Alembic migrations
@@ -227,6 +231,7 @@ Copy `.env.example` to `.env`. Key variables:
 - Cyclomatic complexity (CC) P95: < 7
 - Maintainability Index (MI) P5: > 10
 - Halstead effort P95: < 500
+- Intra-tier coverage duplication: no net-new same-tier duplicate lines beyond the recorded baseline (backend + frontend); enforced via `[test-health]` in `config/quality-thresholds.toml` (`max_intra_tier_duplicate_lines_backend` / `_frontend`)
 - Quality targets defined in `config/quality-thresholds.toml`
 
 ## Custom Agents

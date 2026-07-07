@@ -172,6 +172,25 @@ def _make_report_dir(
     return report_dir
 
 
+def test_load_halstead_p95_handles_radon_dict_shape(tmp_path: Path):
+    # radon 6.x emits `functions` as a {name: metrics} dict, not a list.
+    report_dir = tmp_path / "20240101T120000"
+    report_dir.mkdir(parents=True)
+    hal_data = {
+        "app/__init__.py": {"total": {"effort": 0}, "functions": {}},
+        "app/main.py": {
+            "total": {"effort": 999},
+            "functions": {
+                "fn0": {"effort": 100},
+                "fn1": {"effort": 200},
+                "fn2": {"effort": 300},
+            },
+        },
+    }
+    (report_dir / "hal.json").write_text(json.dumps(hal_data))
+    assert cq.load_halstead_p95(report_dir) == cq.percentile([100, 200, 300], 95)
+
+
 def _patch_all(monkeypatch, tmp_path: Path, line_rate: float, cc: list, mi: list, hal: list):
     toml_content = textwrap.dedent("""\
         [backend]
