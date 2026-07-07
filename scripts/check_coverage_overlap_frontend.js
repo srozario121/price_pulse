@@ -59,6 +59,9 @@ function coveredLinesByFile(reportPath) {
   for (const [file, entry] of Object.entries(data)) {
     if (!entry || !entry.statementMap || !entry.s) continue;
     const lines = new Set();
+    // Use each executed statement's start line — this mirrors how Istanbul
+    // derives line coverage from statement coverage, keeping the overlap metric
+    // consistent with the reported coverage numbers.
     for (const [id, hits] of Object.entries(entry.s)) {
       if (hits > 0 && entry.statementMap[id] && entry.statementMap[id].start) {
         lines.add(entry.statementMap[id].start.line);
@@ -123,7 +126,9 @@ function main() {
     for (const [line, byTier] of byLine) {
       for (const [tier, slugSet] of byTier) {
         if (slugSet.size >= 2) {
-          const [a, b] = [...slugSet];
+          // Sort so the reported example pair is stable across runs/platforms
+          // (enumeration order is not guaranteed). Does not affect the count.
+          const [a, b] = [...slugSet].sort();
           duplicates.push({ file, line, tier, a, b });
         }
       }

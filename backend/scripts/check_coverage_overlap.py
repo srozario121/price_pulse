@@ -100,13 +100,16 @@ def find_duplicates(data: dict) -> list[tuple[str, int, str, str, str]]:
                     bucket.append(base)
             for tier, node_ids in per_tier.items():
                 if len(node_ids) >= 2:
+                    # Sort so the reported example pair is stable across runs
+                    # (context order is not guaranteed); does not affect the count.
+                    first, second = sorted(node_ids)[:2]
                     duplicates.append(
                         (
                             source_file,
                             int(line_str),
                             tier,
-                            _test_func_name(node_ids[0]),
-                            _test_func_name(node_ids[1]),
+                            _test_func_name(first),
+                            _test_func_name(second),
                         )
                     )
     return duplicates
