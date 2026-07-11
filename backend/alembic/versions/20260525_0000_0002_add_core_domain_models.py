@@ -23,23 +23,14 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # ── ENUM types ─────────────────────────────────────────────────────────────
-    source_type_enum = sa.Enum(
-        "generic",
-        "amazon",
-        "ebay",
-        "currys",
-        name="source_type_enum",
-    )
-    source_type_enum.create(op.get_bind(), checkfirst=True)
-
-    alert_direction_enum = sa.Enum("above", "below", name="alert_direction_enum")
-    alert_direction_enum.create(op.get_bind(), checkfirst=True)
-
-    notification_channel_enum = sa.Enum("email", "webhook", name="notification_channel_enum")
-    notification_channel_enum.create(op.get_bind(), checkfirst=True)
-
-    notification_status_enum = sa.Enum("pending", "sent", "failed", name="notification_status_enum")
-    notification_status_enum.create(op.get_bind(), checkfirst=True)
+    # Each native enum below is created inline by the CREATE TABLE that first
+    # uses it (source_type→product, alert_direction→price_alert,
+    # notification_channel/status→notification_log). We intentionally do NOT
+    # create the types explicitly here: under the asyncpg driver a standalone
+    # ``Enum.create(checkfirst=True)`` does not suppress the implicit CREATE TYPE
+    # emitted by the subsequent ``create_table``, producing a duplicate
+    # ``CREATE TYPE`` and a ``DuplicateObjectError``. Letting each owning table
+    # create its own type exactly once is driver-agnostic and idempotent.
 
     # ── product ────────────────────────────────────────────────────────────────
     op.create_table(
@@ -56,7 +47,6 @@ def upgrade() -> None:
                 "currys",
                 name="source_type_enum",
                 native_enum=True,
-                create_type=False,
             ),
             nullable=False,
         ),
@@ -114,7 +104,6 @@ def upgrade() -> None:
                 "below",
                 name="alert_direction_enum",
                 native_enum=True,
-                create_type=False,
             ),
             nullable=False,
         ),
@@ -136,7 +125,6 @@ def upgrade() -> None:
                 "webhook",
                 name="notification_channel_enum",
                 native_enum=True,
-                create_type=False,
             ),
             nullable=False,
         ),
@@ -155,7 +143,6 @@ def upgrade() -> None:
                 "failed",
                 name="notification_status_enum",
                 native_enum=True,
-                create_type=False,
             ),
             nullable=False,
         ),

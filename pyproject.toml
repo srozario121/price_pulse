@@ -1,6 +1,6 @@
 [project]
 name = "price-pulse"
-version = "0.1.1"
+version = "0.1.2"
 description = "Retail product price monitoring platform"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -12,8 +12,13 @@ COPY backend/pyproject.toml backend/
 
 # Export all workspace member deps from the frozen lockfile and install into .venv
 # uv sync --no-install-workspace from workspace root produces an empty venv in this setup.
+# Pin the interpreter to 3.12 to match the rest of the stack (backend + default
+# worker run python:3.12-slim). Without --python, uv provisions the newest
+# CPython it can find (e.g. 3.14), on which celery-aio-pool's async tracer fails
+# to await `async def` tasks — the task returns an un-awaited coroutine and
+# Celery raises "Object of type coroutine is not JSON serializable".
 RUN uv export --frozen --no-dev --no-hashes --package price-pulse-backend --output-file /tmp/requirements.txt && \
-    uv venv .venv && \
+    uv venv --python 3.12 .venv && \
     uv pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Install Playwright browsers

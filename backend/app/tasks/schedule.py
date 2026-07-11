@@ -25,6 +25,7 @@ import structlog
 from celery.signals import worker_ready
 from redbeat import RedBeatSchedulerEntry
 
+from app.scrapers.registry import DEFAULT_QUEUE, queue_for_source_type
 from app.workers.celery_app import celery_app
 
 logger = structlog.get_logger()
@@ -36,8 +37,16 @@ def _schedule_key(product_id: int) -> str:
     return f"{_SCHEDULE_KEY_PREFIX}:{product_id}"
 
 
-def register_product_schedule(product_id: int, interval_minutes: int) -> None:
+def register_product_schedule(
+    product_id: int,
+    interval_minutes: int,
+    queue: str = DEFAULT_QUEUE,
+) -> None:
     """Create or replace the RedBeat entry for *product_id*.
+
+    *queue* is the Celery queue the scheduled scrape is dispatched to when the
+    beat fires — Amazon products must use the ``playwright`` queue (see
+    ``queue_for_source_type``) so the browser-capable worker runs them.
 
     Raises ValueError if interval_minutes < 1.
     """
@@ -52,6 +61,7 @@ def register_product_schedule(product_id: int, interval_minutes: int) -> None:
         task="app.tasks.scrape.scrape_product",
         schedule=interval,
         args=[product_id],
+        options={"queue": queue},
         app=celery_app,
     )
     entry.save()
@@ -61,6 +71,7 @@ def register_product_schedule(product_id: int, interval_minutes: int) -> None:
         product_id=product_id,
         interval_minutes=interval_minutes,
         key=key,
+        queue=queue,
     )
 
 
@@ -96,7 +107,11 @@ async def _sync_schedules_async() -> None:
         products = result.scalars().all()
 
     for product in products:
-        register_product_schedule(product.id, settings.SCRAPE_INTERVAL_MINUTES)
+        register_product_schedule(
+            product.id,
+            settings.SCRAPE_INTERVAL_MINUTES,
+            queue=queue_for_source_type(str(product.source_type)),
+        )
 
     logger.info("startup_schedules_synced", product_count=len(products))
 

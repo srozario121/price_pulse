@@ -30,7 +30,7 @@ router = APIRouter(prefix="/products", tags=["products"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _register_schedule_best_effort(product_id: int) -> None:
+def _register_schedule_best_effort(product_id: int, source_type: str) -> None:
     """Register the per-product scrape schedule; never fail the request on error.
 
     Scheduling is a background concern — a transient Redis/RedBeat issue must not
@@ -38,10 +38,15 @@ def _register_schedule_best_effort(product_id: int) -> None:
     reconciles all active products at its next start, so this is a best-effort
     fast path, not the sole guarantee.
     """
+    from app.scrapers.registry import queue_for_source_type
     from app.tasks.schedule import register_product_schedule
 
     try:
-        register_product_schedule(product_id, settings.SCRAPE_INTERVAL_MINUTES)
+        register_product_schedule(
+            product_id,
+            settings.SCRAPE_INTERVAL_MINUTES,
+            queue=queue_for_source_type(source_type),
+        )
     except Exception as exc:  # noqa: BLE001 — best-effort; log and continue
         logger.warning(
             "product_schedule_registration_failed", product_id=product_id, error=str(exc)
@@ -104,7 +109,7 @@ async def create_product(
     await db.flush()
     await db.refresh(product)
 
-    _register_schedule_best_effort(product.id)
+    _register_schedule_best_effort(product.id, str(product.source_type))
 
     logger.info("product_created", product_id=product.id, url=product.url)
     return product

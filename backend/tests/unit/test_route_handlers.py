@@ -395,14 +395,16 @@ class TestPricesRouteDirect:
 
         from app.api.v1.prices import trigger_scrape
 
-        product = await _create_product(pg_session)
+        product = await _create_product(pg_session)  # source_type="generic"
 
         mock_task = MagicMock()
         mock_task.id = "test-task-id"
 
         with patch("app.api.v1.prices.scrape_product") as mock_scrape:
-            mock_scrape.delay = MagicMock(return_value=mock_task)
+            mock_scrape.apply_async = MagicMock(return_value=mock_task)
             result = await trigger_scrape(product_id=product.id, db=pg_session)
 
+        # Generic products route to the default queue.
+        mock_scrape.apply_async.assert_called_once_with((product.id,), queue="default")
         assert result.task_id == "test-task-id"
         assert result.status == "queued"

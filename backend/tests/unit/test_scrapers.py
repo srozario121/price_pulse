@@ -317,3 +317,25 @@ def test_get_scraper_with_kwargs() -> None:
     scraper = get_scraper("generic", css_selector=".price")
     assert isinstance(scraper, GenericScraper)
     assert scraper.css_selector == ".price"
+
+
+# ── queue_for_source_type ───────────────────────────────────────────────────────
+
+
+def test_queue_for_source_type_amazon_uses_playwright() -> None:
+    # Amazon needs a browser → must run on the playwright worker's queue.
+    from app.scrapers.registry import queue_for_source_type
+
+    assert queue_for_source_type("amazon") == "playwright"
+
+
+def test_queue_for_source_type_generic_uses_default() -> None:
+    from app.scrapers.registry import queue_for_source_type
+
+    assert queue_for_source_type("generic") == "default"
+
+
+def test_queue_for_source_type_unknown_falls_back_to_default() -> None:
+    from app.scrapers.registry import queue_for_source_type
+
+    assert queue_for_source_type("something-else") == "default"

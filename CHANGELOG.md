@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Scraping & migration robustness)
+
+- **Startup schema-version guard**: the application now verifies at startup that the database is at the Alembic migration head and refuses to start otherwise, logging an actionable `db_schema_out_of_date` error (pointing at `make migrate`) instead of failing later with a confusing runtime `UndefinedTableError`. New `app/core/migrations.py`; wired into the FastAPI lifespan after the DB connectivity probe. Controlled by the new `MIGRATION_CHECK_ON_STARTUP` setting (default `true`); the E2E overlay sets it `false` because that harness provisions its schema via `create_all` rather than the migration chain.
+- `queue_for_source_type()` helper (`app/scrapers/registry.py`) — single source of truth mapping a product's `source_type` to the Celery queue whose worker can run its scraper (Amazon → `playwright`, everything else → `default`).
+
+### Fixed (Scraping & migration robustness)
+
+- **Alembic migration `0002` never applied** (`DuplicateObjectError: type "source_type_enum" already exists`): the migration created each native enum twice — once via an explicit `Enum.create(checkfirst=True)` and again via the `create_table` column, because `create_type=False` on the inline `sa.Enum` was not honoured and `checkfirst` does not suppress the duplicate under the asyncpg driver. Each enum is used by exactly one table, so the explicit standalone `create()` calls were removed and each owning `create_table` now creates its type exactly once. Without this the schema could not be provisioned at all and every write failed with `relation "product" does not exist`.
+- **Amazon scrapes ran on the browserless worker**: `scrape_product` was documented to route Amazon tasks to the `playwright` queue but never did — every dispatch went to the default (no-browser) worker and failed with `BrowserType.launch: Executable doesn't exist`. All three dispatch sites now route by `source_type` via `queue_for_source_type()`: the on-demand `POST /products/{id}/scrape` endpoint, create-time schedule registration, and the periodic RedBeat sync (which now stamps `options={"queue": …}` on each entry).
+- **The `celery-playwright` worker ran Python 3.14**: its Dockerfile's `uv venv` did not pin an interpreter, so uv provisioned the newest CPython (3.14) while the rest of the stack runs 3.12. On 3.14 `celery-aio-pool`'s async tracer did not await `async def` tasks, so scrapes failed with `Object of type coroutine is not JSON serializable`. Pinned `uv venv --python 3.12` to match the backend and default worker.
+
 ### Added (Item 11 — Test Suite Health & Coverage Deduplication)
 
 - Intra-tier coverage overlap detection — flags any source line covered by two or more test functions in the *same* tier (both `tests/unit/` or both `tests/integration/`); cross-tier overlap is intentional and excluded.

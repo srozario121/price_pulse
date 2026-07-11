@@ -19,6 +19,10 @@ services:
       - E2E_TEST_HOOKS=true
       - SCRAPE_INTERVAL_MINUTES=1
       - ALERT_COOLDOWN_HOURS=1
+      # The e2e harness provisions its schema via create_all AFTER the backend
+      # is healthy (see Makefile e2e-up + scripts/create_schema.py), so the
+      # alembic_version table is never stamped — disable the startup guard.
+      - MIGRATION_CHECK_ON_STARTUP=false
     depends_on:
       fixture-server:
         condition: service_healthy

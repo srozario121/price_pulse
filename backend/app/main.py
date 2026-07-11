@@ -30,6 +30,7 @@ from app.core.exceptions import (
     unhandled_exception_handler,
     validation_exception_handler,
 )
+from app.core.migrations import verify_schema_is_current
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -42,13 +43,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Async lifespan: startup probe + graceful engine disposal."""
     # ── Startup ──
     logger.info("startup", debug=settings.DEBUG, log_level=settings.LOG_LEVEL)
-    try:
-        async with AsyncSessionLocal() as session:
+    async with AsyncSessionLocal() as session:
+        # 1. Connectivity probe.
+        try:
             await session.execute(text("SELECT 1"))
+        except Exception as exc:
+            logger.error("db_unreachable", error=str(exc))
+            raise RuntimeError("Database is unreachable at startup") from exc
         logger.info("db_connected", url=settings.DATABASE_URL.split("@")[-1])
-    except Exception as exc:
-        logger.error("db_unreachable", error=str(exc))
-        raise RuntimeError("Database is unreachable at startup") from exc
+
+        # 2. Schema-version guard — refuse to serve against an out-of-date or
+        #    unmigrated schema. Raises RuntimeError (with its own message) on
+        #    mismatch; disabled by MIGRATION_CHECK_ON_STARTUP=false in E2E.
+        if settings.MIGRATION_CHECK_ON_STARTUP:
+            await verify_schema_is_current(session)
 
     yield  # application runs here
 
