@@ -86,13 +86,22 @@ def load_halstead_p95(report_dir: Path) -> float:
     if not path.exists():
         _die(f"hal.json not found in {report_dir}; run make quality first")
     data = json.loads(path.read_text())
-    efforts = [
-        fn["effort"]
-        for module in data.values()
-        if isinstance(module, dict) and "functions" in module
-        for fn in module["functions"]
-        if "effort" in fn
-    ]
+    efforts: list[float] = []
+    for module in data.values():
+        if not isinstance(module, dict):
+            continue
+        functions = module.get("functions")
+        # radon 6.x emits `functions` as a {name: metrics} dict; older/mocked
+        # data may use a [metrics, ...] list. Support both.
+        if isinstance(functions, dict):
+            entries = functions.values()
+        elif isinstance(functions, list):
+            entries = functions
+        else:
+            continue
+        for fn in entries:
+            if isinstance(fn, dict) and "effort" in fn:
+                efforts.append(fn["effort"])
     return percentile(efforts, 95)
 
 

@@ -27,3 +27,24 @@ coverage_min_pct = 80
 
 # ESLint max warnings (0 = all warnings are errors)
 eslint_max_warnings = 0
+
+[test-health]
+
+# Intra-tier test coverage duplication — a source line covered by two or more
+# test functions in the *same* tier (both tests/unit/ or both tests/integration/)
+# without adding distinct assertions is waste. Cross-tier overlap is intentional
+# and not counted.
+#
+# IMPORTANT: the count is sensitive to the runtime (the Python version changes
+# coverage line attribution and which async tests run). These baselines are
+# captured on the CI runtime — Python 3.12 (backend) and Node 20 (frontend) —
+# because that is where the gate runs in `make quality`. Re-baseline here if the
+# CI Python/Node version is bumped.
+baseline_backend_duplicate_lines = 680
+baseline_frontend_duplicate_lines = 1112
+
+# Enforcement ceilings (zero tolerance for net-new duplicates from this point).
+# check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
+# actual count exceeds these; equal-or-below passes.
+max_intra_tier_duplicate_lines_backend = 680
+max_intra_tier_duplicate_lines_frontend = 1112

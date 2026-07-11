@@ -171,13 +171,16 @@ format:         ## Format backend (ruff format) and frontend (prettier)
 # Quality gates
 # ---------------------------------------------------------------------------
 .PHONY: quality
-quality:        ## Run full quality gate: pytest + radon + vitest; exits 1 on threshold violation
+quality:        ## Run full quality gate: pytest + radon + vitest + coverage-overlap; exits 1 on threshold violation
 	@mkdir -p logs/quality
-	@TIMESTAMP=$$(date +%Y%m%dT%H%M%S); \
+	@set -e; \
+	  TIMESTAMP=$$(date +%Y%m%dT%H%M%S); \
 	  REPORT_DIR=logs/quality/$$TIMESTAMP; \
 	  mkdir -p $$REPORT_DIR; \
 	  echo "=== Backend tests + coverage ==="; \
-	  cd backend && uv run pytest --cov=app --cov-report=xml:coverage.xml --cov-report=term-missing -m "not live_api" -q; \
+	  cd backend && uv run pytest --cov=app --cov-context=test --cov-report=xml:coverage.xml --cov-report=term-missing -m "not live_api" -q; \
+	  echo "=== Backend coverage contexts ==="; \
+	  uv run coverage json --show-contexts -o ../logs/quality/coverage-contexts.json; \
 	  echo "=== Backend complexity ==="; \
 	  uv run radon cc app -a -s --json > ../$$REPORT_DIR/cc.json 2>&1; \
 	  uv run radon mi app -s --json > ../$$REPORT_DIR/mi.json 2>&1; \
@@ -186,6 +189,18 @@ quality:        ## Run full quality gate: pytest + radon + vitest; exits 1 on th
 	  echo "=== Frontend coverage ==="; \
 	  cd ../frontend && npm run test:coverage; \
 	  cd ../backend && uv run python scripts/check_quality.py
+	@echo "=== Frontend intra-tier coverage overlap ==="
+	@$(MAKE) check-coverage-overlap-frontend
+	@echo "=== Backend intra-tier coverage overlap ==="
+	@$(MAKE) check-coverage-overlap
+
+.PHONY: check-coverage-overlap
+check-coverage-overlap: ## Flag backend same-tier test coverage duplication (needs make quality first)
+	cd backend && uv run python scripts/check_coverage_overlap.py
+
+.PHONY: check-coverage-overlap-frontend
+check-coverage-overlap-frontend: ## Flag frontend same-tier test coverage duplication (runs per-file vitest)
+	bash scripts/check_coverage_overlap_frontend.sh && node scripts/check_coverage_overlap_frontend.js
 
 # ---------------------------------------------------------------------------
 # Database migrations

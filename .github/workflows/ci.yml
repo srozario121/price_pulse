@@ -179,6 +179,70 @@ jobs:
           path: frontend/coverage/
 
   # ===========================================================================
+  # Job — Quality gate
+  # Runs `make quality`: backend coverage (≥90%) + radon complexity thresholds
+  # (check_quality.py) AND intra-tier coverage-overlap enforcement (backend +
+  # frontend). Uses the same Postgres service + env as test-backend so the
+  # coverage contexts are generated from a full run. This is the CI enforcement
+  # point for config/quality-thresholds.toml.
+  # ===========================================================================
+  quality:
+    name: Quality — coverage, complexity & overlap
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: price_pulse
+          POSTGRES_PASSWORD: price_pulse
+          POSTGRES_DB: price_pulse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U price_pulse -d price_pulse_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://price_pulse:price_pulse@localhost:5432/price_pulse_test
+      DATABASE_SYNC_URL: postgresql://price_pulse:price_pulse@localhost:5432/price_pulse_test
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      DEBUG: "false"
+      LOG_LEVEL: WARNING
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend deps
+        run: uv sync --group dev
+        working-directory: backend
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run quality gate (coverage, complexity, intra-tier overlap)
+        run: make quality
+
+  # ===========================================================================
   # Job 4 — Docker build
   # Builds all images on every PR (no push); uses --cache-from for speed.
   # Images are pushed to the registry only on merge to main (separate workflow).

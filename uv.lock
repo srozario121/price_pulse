@@ -1341,7 +1341,7 @@ dev = [{ name = "pre-commit", specifier = ">=3.7" }]
 
 [[package]]
 name = "price-pulse-backend"
-version = "0.1.0"
+version = "0.1.1"
 source = { virtual = "backend" }
 dependencies = [
     { name = "alembic" },
