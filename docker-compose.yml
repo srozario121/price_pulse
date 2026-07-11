@@ -64,6 +64,16 @@ services:
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    # Override the backend image's inherited HTTP HEALTHCHECK (curl :8000/health),
+    # which can never pass here — workers serve no HTTP. Ping this worker's own
+    # node instead ($HOSTNAME is the container id, and the default nodename is
+    # celery@<hostname>). $$ escapes the compose variable so the shell expands it.
+    healthcheck:
+      test: ["CMD-SHELL", "/app/.venv/bin/celery -A app.workers.celery_app inspect ping -d celery@$${HOSTNAME} -t 10 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 40s
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,6 +103,13 @@ services:
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    # Beat is a scheduler, not a worker — it serves no HTTP and does not answer
+    # `celery inspect ping`, so the backend image's inherited :8000/health probe
+    # can never pass. There is no clean liveness probe for beat; disable the
+    # healthcheck rather than report a permanently-false "unhealthy". `restart:
+    # unless-stopped` still recovers a crashed process.
+    healthcheck:
+      disable: true
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,6 +138,14 @@ services:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
       - CELERY_QUEUES=playwright
+    # The playwright base image ships no HEALTHCHECK; add the same worker-node
+    # ping used by celery-worker so this (Amazon-critical) worker is monitored.
+    healthcheck:
+      test: ["CMD-SHELL", "/app/.venv/bin/celery -A app.workers.celery_app inspect ping -d celery@$${HOSTNAME} -t 10 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 40s
     depends_on:
       postgres:
         condition: service_healthy
