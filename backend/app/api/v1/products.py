@@ -4,6 +4,7 @@ Routes
 ------
 POST   /products              → 201 ProductRead          create product
 GET    /products              → 200 PaginatedResponse     list (optional ?is_active)
+GET    /products/failing      → 200 PaginatedResponse     products with all-failing latest scrapes
 GET    /products/{id}         → 200 ProductRead           retrieve
 PATCH  /products/{id}         → 200 ProductRead           partial update
 DELETE /products/{id}         → 204 No Content            delete + cascade
@@ -20,7 +21,13 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.product import Product
 from app.schemas.common import PaginatedResponse
-from app.schemas.product import ProductCreate, ProductRead, ProductUpdate
+from app.schemas.product import (
+    FailingProductRead,
+    ProductCreate,
+    ProductRead,
+    ProductUpdate,
+)
+from app.services import monitoring_service
 
 logger = structlog.get_logger(__name__)
 
@@ -142,6 +149,39 @@ async def list_products(
     items = [ProductRead.model_validate(p) for p in result.scalars().all()]
 
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get(
+    "/failing",
+    response_model=PaginatedResponse[FailingProductRead],
+    summary="List products whose latest scrapes have all failed",
+)
+async def list_failing_products(
+    min_failures: int = Query(
+        3,
+        ge=1,
+        le=50,
+        description="Flag a product only if its latest N records are all non-'ok'",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> PaginatedResponse[FailingProductRead]:
+    """Surface active products whose crawls are quietly failing.
+
+    A crawl that returns `extraction_failed`/`http_error` is recorded as a
+    successful task, so a persistently-broken scraper never raises. This lists
+    active products whose most recent `min_failures` records are all non-`ok`.
+    """
+    failing = await monitoring_service.find_failing_products(db, min_failures=min_failures)
+    items = [
+        FailingProductRead(
+            product=ProductRead.model_validate(f.product),
+            latest_status=f.latest_status,
+            latest_captured_at=f.latest_captured_at,
+            last_success_at=f.last_success_at,
+        )
+        for f in failing
+    ]
+    return PaginatedResponse(items=items, total=len(items), limit=len(items), offset=0)
 
 
 @router.get(

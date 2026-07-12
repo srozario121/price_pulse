@@ -11,6 +11,7 @@ Usage in a route:
         ...
 """
 
+import sys
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -20,9 +21,33 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from app.core.config import settings
+
+
+def _running_under_celery() -> bool:
+    """True when this process was launched as a Celery worker or beat.
+
+    Celery runs each task under celery-aio-pool's AsyncIOPool, whose event loop
+    differs from the transient loops used elsewhere in the worker (e.g. the
+    ``asyncio.run`` loop that ``startup_sync_schedules`` uses at worker start).
+    A pooled asyncpg connection is bound to the loop that created it, so reusing
+    it from another loop raises ``RuntimeError: Event loop is closed`` /
+    ``got Future ... attached to a different loop`` — which burned a retry on the
+    first scrape of every worker. The FastAPI app runs on a single persistent
+    uvicorn loop and is unaffected, so it keeps normal connection pooling.
+
+    Detection is deliberately broad because the workers are launched in several
+    ways (``celery ... worker``, ``python .../celery ... beat``, ``uv run celery
+    ... worker``): the program name may be ``celery`` or the interpreter, so we
+    also treat a ``worker``/``beat`` subcommand in argv as a positive signal.
+    """
+    argv = sys.argv or []
+    prog = argv[0] if argv else ""
+    if prog.endswith("celery") or "celery" in prog:
+        return True
+    return any(arg in {"worker", "beat"} for arg in argv[1:])
 
 
 def _make_engine() -> AsyncEngine:
@@ -39,6 +64,12 @@ def _make_engine() -> AsyncEngine:
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
+
+    if _running_under_celery():
+        # NullPool opens (and closes) a fresh connection per session, always on
+        # the current task's event loop — no connection is ever reused across
+        # loops. See _running_under_celery for why this matters in workers.
+        return create_async_engine(url, echo=settings.DEBUG, poolclass=NullPool)
 
     return create_async_engine(
         url,

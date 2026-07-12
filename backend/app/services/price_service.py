@@ -15,8 +15,21 @@ logger = structlog.get_logger()
 
 
 def _is_duplicate(latest: PriceRecord | None, scraped_result: ScrapedResult) -> bool:
+    """True only for a redundant *successful* price observation.
+
+    Deduplication exists to avoid storing the same price twice when a page is
+    unchanged. It must NOT collapse repeated *failures*: a consistently-broken
+    scraper (e.g. a CAPTCHA-walled or drifted-selector page) returns byte-identical
+    HTML every run, so hash-only dedup would keep a single ``extraction_failed``
+    record forever and ``monitoring_service.find_failing_products`` (which needs the
+    latest N records to all be non-``ok``) could never flag it. So we dedupe only
+    when both the incoming scrape and the latest stored record are ``OK`` with a
+    matching hash; every failure — and every fail→ok recovery — is always recorded.
+    """
     return (
-        latest is not None
+        scraped_result.extraction_status == ExtractionStatus.OK
+        and latest is not None
+        and latest.extraction_status == ExtractionStatus.OK
         and bool(scraped_result.html_hash)
         and latest.raw_html_hash is not None
         and latest.raw_html_hash == scraped_result.html_hash

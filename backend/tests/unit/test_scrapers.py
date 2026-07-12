@@ -197,18 +197,28 @@ async def test_generic_scraper_default_currency_usd() -> None:
 
 
 def _make_playwright_mock(
-    evaluate_result: object,
+    evaluate_result: object = None,
     html_content: str = "<html>Amazon page</html>",
     goto_side_effect: Exception | None = None,
+    evaluate_side_effect: list[object] | None = None,
 ) -> tuple[object, object]:
-    """Build a full Playwright mock chain and return (mock_playwright_cm, mock_browser)."""
+    """Build a full Playwright mock chain and return (mock_playwright_cm, mock_browser).
+
+    ``page.evaluate`` is called once for the ld+json script and, when that yields
+    nothing, a second time for the DOM-price fallback. Pass ``evaluate_side_effect``
+    to return distinct values for those successive calls; otherwise every call
+    returns ``evaluate_result``.
+    """
     mock_page = AsyncMock()
     if goto_side_effect is not None:
         mock_page.goto = AsyncMock(side_effect=goto_side_effect)
     else:
         mock_page.goto = AsyncMock()
     mock_page.content = AsyncMock(return_value=html_content)
-    mock_page.evaluate = AsyncMock(return_value=evaluate_result)
+    if evaluate_side_effect is not None:
+        mock_page.evaluate = AsyncMock(side_effect=evaluate_side_effect)
+    else:
+        mock_page.evaluate = AsyncMock(return_value=evaluate_result)
 
     mock_context = AsyncMock()
     mock_context.new_page = AsyncMock(return_value=mock_page)
@@ -248,10 +258,36 @@ async def test_amazon_scraper_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_amazon_scraper_no_ldjson() -> None:
+async def test_amazon_scraper_dom_fallback_when_no_ldjson() -> None:
+    """No ld+json offer block → price is read from the rendered DOM instead.
+
+    Regression guard for amazon.co.uk pages that load fine (HTTP 200) but ship no
+    ``application/ld+json``: the ld+json evaluate returns None and the DOM-price
+    evaluate returns the buy-box price, which must be recorded as a success.
+    """
     from app.scrapers.amazon import AmazonScraper
 
-    mock_pw_cm, _ = _make_playwright_mock(evaluate_result=None)
+    mock_pw_cm, _ = _make_playwright_mock(
+        evaluate_side_effect=[None, {"price": "107.5", "currency": "GBP"}],
+    )
+
+    with patch("playwright.async_api.async_playwright", return_value=mock_pw_cm):
+        scraper = AmazonScraper()
+        result = await scraper.fetch("https://amazon.co.uk/dp/B001")
+
+    assert result.extraction_status == ExtractionStatus.OK
+    assert result.price == Decimal("107.5")
+    assert result.currency == "GBP"
+
+
+@pytest.mark.asyncio
+async def test_amazon_scraper_no_price_anywhere() -> None:
+    """Neither ld+json nor the DOM fallback yields a price → extraction failed."""
+    from app.scrapers.amazon import AmazonScraper
+
+    mock_pw_cm, _ = _make_playwright_mock(
+        evaluate_side_effect=[None, None],
+    )
 
     with patch("playwright.async_api.async_playwright", return_value=mock_pw_cm):
         scraper = AmazonScraper()

@@ -29,9 +29,14 @@ def _make_scraped_result(
     )
 
 
-def _make_price_record(html_hash: str | None = "abc123") -> MagicMock:
+def _make_price_record(
+    html_hash: str | None = "abc123",
+    status: ExtractionStatus = ExtractionStatus.OK,
+) -> MagicMock:
     record = MagicMock()
     record.raw_html_hash = html_hash
+    # Stored as a String column in the model, so mirror the string value here.
+    record.extraction_status = status.value
     return record
 
 
@@ -81,6 +86,63 @@ async def test_record_price_new_hash() -> None:
 
     mock_session.add.assert_called_once()
     mock_session.flush.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_record_price_repeated_failure_not_deduplicated() -> None:
+    """Identical-HTML repeated failures are each recorded (not deduped).
+
+    A consistently-broken scrape returns byte-identical HTML every run; if these
+    were deduped, only one ``extraction_failed`` row would ever exist and
+    ``find_failing_products`` (needs the latest N records all non-``ok``) could
+    never flag the product. So each failure must insert a new row.
+    """
+    from app.services import price_service
+
+    existing = _make_price_record("samehash" + "z" * 56, status=ExtractionStatus.EXTRACTION_FAILED)
+
+    mock_session = AsyncMock()
+    mock_execute = AsyncMock()
+    mock_execute.scalar_one_or_none = MagicMock(return_value=existing)
+    mock_session.execute = AsyncMock(return_value=mock_execute)
+    mock_session.flush = AsyncMock()
+
+    scraped = _make_scraped_result(
+        html_hash="samehash" + "z" * 56, price=None, status=ExtractionStatus.EXTRACTION_FAILED
+    )
+
+    with patch("app.services.price_service.alert_service.evaluate_alerts", new=AsyncMock()):
+        await price_service.record_price(1, scraped, mock_session)
+
+    mock_session.add.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_record_price_recovery_after_failure_not_deduplicated() -> None:
+    """A fail→ok recovery with an unchanged hash is still recorded.
+
+    Even if the HTML hash matches the prior failed record, a now-successful
+    extraction is a real price observation and must be persisted (and alerts
+    evaluated), not collapsed into the stale failure row.
+    """
+    from app.services import price_service
+
+    existing = _make_price_record("samehash" + "z" * 56, status=ExtractionStatus.EXTRACTION_FAILED)
+
+    mock_session = AsyncMock()
+    mock_execute = AsyncMock()
+    mock_execute.scalar_one_or_none = MagicMock(return_value=existing)
+    mock_session.execute = AsyncMock(return_value=mock_execute)
+    mock_session.flush = AsyncMock()
+
+    scraped = _make_scraped_result(html_hash="samehash" + "z" * 56, status=ExtractionStatus.OK)
+
+    evaluate = AsyncMock()
+    with patch("app.services.price_service.alert_service.evaluate_alerts", new=evaluate):
+        await price_service.record_price(1, scraped, mock_session)
+
+    mock_session.add.assert_called_once()
+    evaluate.assert_awaited_once()
 
 
 @pytest.mark.asyncio
