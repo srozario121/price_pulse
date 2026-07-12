@@ -47,10 +47,14 @@ async def find_failing_products(
         raise ValueError(f"min_failures must be >= 1, got {min_failures}")
 
     # Rank each product's records newest-first (id breaks captured_at ties).
-    rn = func.row_number().over(
-        partition_by=PriceRecord.product_id,
-        order_by=(PriceRecord.captured_at.desc(), PriceRecord.id.desc()),
-    ).label("rn")
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=PriceRecord.product_id,
+            order_by=(PriceRecord.captured_at.desc(), PriceRecord.id.desc()),
+        )
+        .label("rn")
+    )
     ranked = select(
         PriceRecord.product_id.label("product_id"),
         PriceRecord.extraction_status.label("status"),
@@ -103,7 +107,7 @@ async def find_failing_products(
             .group_by(PriceRecord.product_id)
         )
     ).all()
-    last_success = {pid: ts for pid, ts in success_rows}
+    last_success = dict(success_rows)
 
     return [
         FailingProduct(

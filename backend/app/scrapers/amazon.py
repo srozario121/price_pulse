@@ -162,9 +162,7 @@ async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) ->
                 scraped_at=datetime.now(UTC),
                 extraction_status=ExtractionStatus.EXTRACTION_FAILED,
             )
-        logger.info(
-            "amazon_scraper_dom_fallback", url=url, selector=dom_result.get("selector")
-        )
+        logger.info("amazon_scraper_dom_fallback", url=url, selector=dom_result.get("selector"))
         return _parse_ld_result(dom_result, html, html_hash, url)
 
     return _parse_ld_result(ld_result, html, html_hash, url)
