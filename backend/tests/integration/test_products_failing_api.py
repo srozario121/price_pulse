@@ -67,7 +67,9 @@ class TestListFailingProducts:
         product = await _create_product(pg_async_client)
         pid = product["id"]
         for i, status in enumerate(["extraction_failed", "http_error", "extraction_failed"]):
-            await _seed_record(pg_engine, pid, status=status, captured_at=f"2026-01-0{i + 1}T10:00:00Z")
+            await _seed_record(
+                pg_engine, pid, status=status, captured_at=f"2026-01-0{i + 1}T10:00:00Z"
+            )
 
         # Act
         resp = await pg_async_client.get("/api/v1/products/failing")
@@ -86,9 +88,13 @@ class TestListFailingProducts:
         # Arrange: an early success, then the latest 3 all fail.
         product = await _create_product(pg_async_client)
         pid = product["id"]
-        await _seed_record(pg_engine, pid, status="ok", captured_at="2026-01-01T09:00:00Z", price="9.99")
+        await _seed_record(
+            pg_engine, pid, status="ok", captured_at="2026-01-01T09:00:00Z", price="9.99"
+        )
         for i, status in enumerate(["extraction_failed"] * 3):
-            await _seed_record(pg_engine, pid, status=status, captured_at=f"2026-02-0{i + 1}T10:00:00Z")
+            await _seed_record(
+                pg_engine, pid, status=status, captured_at=f"2026-02-0{i + 1}T10:00:00Z"
+            )
 
         # Act
         resp = await pg_async_client.get("/api/v1/products/failing")
@@ -104,9 +110,15 @@ class TestListFailingProducts:
         # Arrange: two failures then a recovery — latest record is ok.
         product = await _create_product(pg_async_client)
         pid = product["id"]
-        await _seed_record(pg_engine, pid, status="extraction_failed", captured_at="2026-01-01T10:00:00Z")
-        await _seed_record(pg_engine, pid, status="extraction_failed", captured_at="2026-01-02T10:00:00Z")
-        await _seed_record(pg_engine, pid, status="ok", captured_at="2026-01-03T10:00:00Z", price="5.00")
+        await _seed_record(
+            pg_engine, pid, status="extraction_failed", captured_at="2026-01-01T10:00:00Z"
+        )
+        await _seed_record(
+            pg_engine, pid, status="extraction_failed", captured_at="2026-01-02T10:00:00Z"
+        )
+        await _seed_record(
+            pg_engine, pid, status="ok", captured_at="2026-01-03T10:00:00Z", price="5.00"
+        )
 
         # Act
         resp = await pg_async_client.get("/api/v1/products/failing")
@@ -120,7 +132,9 @@ class TestListFailingProducts:
         # Arrange: a single failure — below default (3) but at/above min_failures=1.
         product = await _create_product(pg_async_client)
         pid = product["id"]
-        await _seed_record(pg_engine, pid, status="extraction_failed", captured_at="2026-01-01T10:00:00Z")
+        await _seed_record(
+            pg_engine, pid, status="extraction_failed", captured_at="2026-01-01T10:00:00Z"
+        )
 
         # Default threshold does not flag it; min_failures=1 does.
         assert (await pg_async_client.get("/api/v1/products/failing")).json()["items"] == []
@@ -131,12 +145,16 @@ class TestListFailingProducts:
     async def test_inactive_product_excluded(self, pg_async_client, pg_engine):
         # Arrange: a failing but inactive product is not surfaced.
         product = await _create_product(
-            pg_async_client, {**PRODUCT_PAYLOAD, "url": "https://example.com/inactive", "is_active": False}
+            pg_async_client,
+            {**PRODUCT_PAYLOAD, "url": "https://example.com/inactive", "is_active": False},
         )
         pid = product["id"]
         for i in range(3):
             await _seed_record(
-                pg_engine, pid, status="extraction_failed", captured_at=f"2026-01-0{i + 1}T10:00:00Z"
+                pg_engine,
+                pid,
+                status="extraction_failed",
+                captured_at=f"2026-01-0{i + 1}T10:00:00Z",
             )
 
         resp = await pg_async_client.get("/api/v1/products/failing", params={"min_failures": 1})
