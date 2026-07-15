@@ -8,6 +8,27 @@ name: price-pulse
 services:
 
   # ---------------------------------------------------------------------------
+  # Migrate — one-shot: bring the DB schema to the Alembic head, then exit.
+  # The app enforces MIGRATION_CHECK_ON_STARTUP and refuses to serve on an
+  # out-of-date schema, so backend + workers wait for this to complete first.
+  # ---------------------------------------------------------------------------
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    image: price-pulse-backend:latest
+    env_file: .env
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    command: /app/.venv/bin/alembic -c /app/alembic.ini upgrade head
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - price-pulse-net
+
+  # ---------------------------------------------------------------------------
   # Backend — FastAPI application
   # ---------------------------------------------------------------------------
   backend:
@@ -32,6 +53,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -79,6 +102,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -115,6 +140,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -151,6 +178,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
