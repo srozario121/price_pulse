@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -63,19 +64,13 @@ _DOM_PRICE_SCRIPT = """
         for (const sym of Object.keys(SYMBOL)) {
             if (text.indexOf(sym) !== -1) { currency = SYMBOL[sym]; break; }
         }
-        let num = text.replace(/[^0-9.,]/g, '');
-        if (!num) return null;
-        if (num.indexOf(',') !== -1 && num.indexOf('.') !== -1) {
-            num = num.replace(/,/g, '');           // comma = thousands separator
-        } else if (num.indexOf(',') !== -1) {
-            const parts = num.split(',');
-            num = parts[parts.length - 1].length === 2
-                ? parts.slice(0, -1).join('') + '.' + parts[parts.length - 1]  // EU decimal
-                : num.replace(/,/g, '');
-        }
-        const val = parseFloat(num);
-        if (!isFinite(val)) return null;
-        return {price: String(val), currency: currency};
+        const num = text.replace(/[^0-9.,]/g, '');
+        if (!/[0-9]/.test(num)) return null;
+        // Return the raw digit/separator run untouched. Which of '.'/',' is the
+        // decimal point is locale-dependent (1,234.56 in en-US vs 1.234,56 in
+        // de-DE) and cannot be decided reliably here, so normalisation is done
+        // in Python by _normalize_price_text.
+        return {price: num, currency: currency};
     };
     for (const sel of SELECTORS) {
         const els = document.querySelectorAll(sel);
@@ -87,6 +82,61 @@ _DOM_PRICE_SCRIPT = """
     return null;
 }
 """
+
+
+def _normalize_price_text(raw: str) -> Decimal | None:
+    """Convert a locale-formatted price string to a Decimal, or None if unparseable.
+
+    Amazon renders prices in the marketplace's locale, so the roles of ``.`` and
+    ``,`` differ: ``1,234.56`` (en-US/en-GB) vs ``1.234,56`` (de/fr/es/it). The
+    separator that appears *last* is the decimal point; earlier separators group
+    thousands. When only one kind of separator is present, a trailing group of
+    exactly two digits is read as a decimal fraction (``1234,56`` -> 1234.56),
+    otherwise the separators group thousands (``1,234`` -> 1234, ``1.234.567`` ->
+    1234567).
+    """
+    cleaned = re.sub(r"[^0-9.,]", "", raw or "")
+    if not any(ch.isdigit() for ch in cleaned):
+        return None
+
+    has_comma = "," in cleaned
+    has_dot = "." in cleaned
+    if has_comma and has_dot:
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            num = cleaned.replace(".", "").replace(",", ".")  # 1.234,56 -> 1234.56
+        else:
+            num = cleaned.replace(",", "")  # 1,234.56 -> 1234.56
+    elif has_comma:
+        head, _, tail = cleaned.rpartition(",")
+        num = f"{head.replace(',', '')}.{tail}" if len(tail) == 2 else cleaned.replace(",", "")
+    else:
+        num = cleaned.replace(".", "") if cleaned.count(".") > 1 else cleaned
+
+    try:
+        return Decimal(num)
+    except InvalidOperation:
+        return None
+
+
+def _parse_dom_result(
+    dom_result: object,
+    html: str,
+    html_hash: str,
+    url: str,
+) -> ScrapedResult:
+    """Parse a DOM-fallback result, normalising its locale-formatted price string.
+
+    The DOM script returns the price as the raw digit/separator run from the
+    rendered buy-box (e.g. ``"1.234,56"``); normalise it to a canonical decimal
+    string and reuse :func:`_parse_ld_result` for the ScrapedResult assembly. A
+    string that does not yield a price is passed through without a ``price`` key
+    so ``_parse_ld_result`` emits its standard extraction-failed result.
+    """
+    price = _normalize_price_text(str(dom_result.get("price", "")))  # type: ignore[attr-defined]
+    normalised: dict[str, object] = {"currency": dom_result.get("currency")}  # type: ignore[attr-defined]
+    if price is not None:
+        normalised["price"] = str(price)
+    return _parse_ld_result(normalised, html, html_hash, url)
 
 
 def _parse_ld_result(
@@ -163,7 +213,7 @@ async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) ->
                 extraction_status=ExtractionStatus.EXTRACTION_FAILED,
             )
         logger.info("amazon_scraper_dom_fallback", url=url, selector=dom_result.get("selector"))
-        return _parse_ld_result(dom_result, html, html_hash, url)
+        return _parse_dom_result(dom_result, html, html_hash, url)
 
     return _parse_ld_result(ld_result, html, html_hash, url)
 

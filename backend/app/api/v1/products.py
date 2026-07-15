@@ -163,6 +163,8 @@ async def list_failing_products(
         le=50,
         description="Flag a product only if its latest N records are all non-'ok'",
     ),
+    limit: int = Query(50, ge=1, le=100, description="Max items per page (≤ 100)"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[FailingProductRead]:
     """Surface active products whose crawls are quietly failing.
@@ -170,8 +172,13 @@ async def list_failing_products(
     A crawl that returns `extraction_failed`/`http_error` is recorded as a
     successful task, so a persistently-broken scraper never raises. This lists
     active products whose most recent `min_failures` records are all non-`ok`.
+
+    Paginated: `total` is the full count of flagging products; `items` is the
+    requested `limit`/`offset` slice. `limit` is bounded to ≤ 100 so the response
+    envelope stays valid however many products are failing at once.
     """
     failing = await monitoring_service.find_failing_products(db, min_failures=min_failures)
+    page = failing[offset : offset + limit]
     items = [
         FailingProductRead(
             product=ProductRead.model_validate(f.product),
@@ -179,9 +186,9 @@ async def list_failing_products(
             latest_captured_at=f.latest_captured_at,
             last_success_at=f.last_success_at,
         )
-        for f in failing
+        for f in page
     ]
-    return PaginatedResponse(items=items, total=len(items), limit=len(items), offset=0)
+    return PaginatedResponse(items=items, total=len(failing), limit=limit, offset=offset)
 
 
 @router.get(

@@ -166,6 +166,49 @@ class TestListFailingProducts:
         resp = await pg_async_client.get("/api/v1/products/failing", params={"min_failures": 0})
         assert resp.status_code == 422
 
+    @pytest.mark.asyncio
+    async def test_paginates_with_total_and_bounded_limit(self, pg_async_client, pg_engine):
+        # Arrange: three failing products (latest record of each is a failure).
+        ids = []
+        for n in range(3):
+            product = await _create_product(
+                pg_async_client, {**PRODUCT_PAYLOAD, "url": f"https://example.com/p{n}"}
+            )
+            pid = product["id"]
+            ids.append(pid)
+            await _seed_record(
+                pg_engine,
+                pid,
+                status="extraction_failed",
+                captured_at=f"2026-03-0{n + 1}T10:00:00Z",
+            )
+
+        # Act: first page of two, ordered by product id (service orders by id).
+        page1 = await pg_async_client.get(
+            "/api/v1/products/failing", params={"min_failures": 1, "limit": 2, "offset": 0}
+        )
+        page2 = await pg_async_client.get(
+            "/api/v1/products/failing", params={"min_failures": 1, "limit": 2, "offset": 2}
+        )
+
+        # Assert: total is the full count; each page is the requested slice.
+        assert page1.status_code == 200, page1.text
+        b1 = page1.json()
+        assert b1["total"] == 3
+        assert b1["limit"] == 2
+        assert b1["offset"] == 0
+        assert [i["product"]["id"] for i in b1["items"]] == sorted(ids)[:2]
+
+        b2 = page2.json()
+        assert b2["total"] == 3
+        assert [i["product"]["id"] for i in b2["items"]] == sorted(ids)[2:]
+
+    @pytest.mark.asyncio
+    async def test_limit_above_100_is_rejected(self, pg_async_client):
+        # The response envelope caps limit at 100; the query param enforces it up front.
+        resp = await pg_async_client.get("/api/v1/products/failing", params={"limit": 101})
+        assert resp.status_code == 422
+
 
 # ── monitoring_service.find_failing_products (direct) ───────────────────────────
 

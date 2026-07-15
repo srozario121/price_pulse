@@ -297,6 +297,52 @@ async def test_amazon_scraper_no_price_anywhere() -> None:
     assert result.price is None
 
 
+def test_normalize_price_text_handles_locale_and_junk() -> None:
+    """Locale separators are resolved by position; unparseable text yields None."""
+    from app.scrapers.amazon import _normalize_price_text
+
+    cases = {
+        "299.99": Decimal("299.99"),  # plain decimal
+        "1,234.56": Decimal("1234.56"),  # en-US: comma thousands, dot decimal
+        "1.234,56": Decimal("1234.56"),  # de-DE: dot thousands, comma decimal
+        "£1,234.56": Decimal("1234.56"),  # currency symbol stripped
+        "1.234.567,89": Decimal("1234567.89"),  # EU multi-group thousands
+        "1,234,567.89": Decimal("1234567.89"),  # US multi-group thousands
+        "1234,56": Decimal("1234.56"),  # comma-only, two-digit decimal
+        "1,234": Decimal("1234"),  # comma-only, three-digit thousands group
+        "1.234.567": Decimal("1234567"),  # dot-only thousands groups
+        "49": Decimal("49"),  # bare integer
+    }
+    for raw, expected in cases.items():
+        assert _normalize_price_text(raw) == expected, raw
+
+    for junk in ("", "   ", "N/A", "--", "£"):
+        assert _normalize_price_text(junk) is None, junk
+
+
+@pytest.mark.asyncio
+async def test_amazon_scraper_dom_fallback_parses_eu_format() -> None:
+    """A DOM buy-box price in EU format (1.234,56) records as 1234.56, not 1.234.
+
+    Regression guard for amazon.de/fr/es/it: the DOM script now returns the raw
+    price text and _normalize_price_text resolves the decimal separator, so the
+    old 'comma is always thousands' assumption no longer mis-parses EU prices.
+    """
+    from app.scrapers.amazon import AmazonScraper
+
+    mock_pw_cm, _ = _make_playwright_mock(
+        evaluate_side_effect=[None, {"price": "1.234,56", "currency": "EUR"}],
+    )
+
+    with patch("playwright.async_api.async_playwright", return_value=mock_pw_cm):
+        scraper = AmazonScraper()
+        result = await scraper.fetch("https://amazon.de/dp/B001")
+
+    assert result.extraction_status == ExtractionStatus.OK
+    assert result.price == Decimal("1234.56")
+    assert result.currency == "EUR"
+
+
 @pytest.mark.asyncio
 async def test_amazon_scraper_timeout() -> None:
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
