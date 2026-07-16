@@ -4,6 +4,7 @@ Routes
 ------
 POST   /products              → 201 ProductRead          create product
 GET    /products              → 200 PaginatedResponse     list (optional ?is_active)
+GET    /products/failing      → 200 PaginatedResponse     products with all-failing latest scrapes
 GET    /products/{id}         → 200 ProductRead           retrieve
 PATCH  /products/{id}         → 200 ProductRead           partial update
 DELETE /products/{id}         → 204 No Content            delete + cascade
@@ -20,7 +21,13 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.product import Product
 from app.schemas.common import PaginatedResponse
-from app.schemas.product import ProductCreate, ProductRead, ProductUpdate
+from app.schemas.product import (
+    FailingProductRead,
+    ProductCreate,
+    ProductRead,
+    ProductUpdate,
+)
+from app.services import monitoring_service
 
 logger = structlog.get_logger(__name__)
 
@@ -30,7 +37,7 @@ router = APIRouter(prefix="/products", tags=["products"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _register_schedule_best_effort(product_id: int) -> None:
+def _register_schedule_best_effort(product_id: int, source_type: str) -> None:
     """Register the per-product scrape schedule; never fail the request on error.
 
     Scheduling is a background concern — a transient Redis/RedBeat issue must not
@@ -38,10 +45,15 @@ def _register_schedule_best_effort(product_id: int) -> None:
     reconciles all active products at its next start, so this is a best-effort
     fast path, not the sole guarantee.
     """
+    from app.scrapers.registry import queue_for_source_type
     from app.tasks.schedule import register_product_schedule
 
     try:
-        register_product_schedule(product_id, settings.SCRAPE_INTERVAL_MINUTES)
+        register_product_schedule(
+            product_id,
+            settings.SCRAPE_INTERVAL_MINUTES,
+            queue=queue_for_source_type(source_type),
+        )
     except Exception as exc:  # noqa: BLE001 — best-effort; log and continue
         logger.warning(
             "product_schedule_registration_failed", product_id=product_id, error=str(exc)
@@ -104,7 +116,7 @@ async def create_product(
     await db.flush()
     await db.refresh(product)
 
-    _register_schedule_best_effort(product.id)
+    _register_schedule_best_effort(product.id, str(product.source_type))
 
     logger.info("product_created", product_id=product.id, url=product.url)
     return product
@@ -137,6 +149,46 @@ async def list_products(
     items = [ProductRead.model_validate(p) for p in result.scalars().all()]
 
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get(
+    "/failing",
+    response_model=PaginatedResponse[FailingProductRead],
+    summary="List products whose latest scrapes have all failed",
+)
+async def list_failing_products(
+    min_failures: int = Query(
+        3,
+        ge=1,
+        le=50,
+        description="Flag a product only if its latest N records are all non-'ok'",
+    ),
+    limit: int = Query(50, ge=1, le=100, description="Max items per page (≤ 100)"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    db: AsyncSession = Depends(get_db),
+) -> PaginatedResponse[FailingProductRead]:
+    """Surface active products whose crawls are quietly failing.
+
+    A crawl that returns `extraction_failed`/`http_error` is recorded as a
+    successful task, so a persistently-broken scraper never raises. This lists
+    active products whose most recent `min_failures` records are all non-`ok`.
+
+    Paginated: `total` is the full count of flagging products; `items` is the
+    requested `limit`/`offset` slice. `limit` is bounded to ≤ 100 so the response
+    envelope stays valid however many products are failing at once.
+    """
+    failing = await monitoring_service.find_failing_products(db, min_failures=min_failures)
+    page = failing[offset : offset + limit]
+    items = [
+        FailingProductRead(
+            product=ProductRead.model_validate(f.product),
+            latest_status=f.latest_status,
+            latest_captured_at=f.latest_captured_at,
+            last_success_at=f.last_success_at,
+        )
+        for f in page
+    ]
+    return PaginatedResponse(items=items, total=len(failing), limit=limit, offset=offset)
 
 
 @router.get(

@@ -197,18 +197,28 @@ async def test_generic_scraper_default_currency_usd() -> None:
 
 
 def _make_playwright_mock(
-    evaluate_result: object,
+    evaluate_result: object = None,
     html_content: str = "<html>Amazon page</html>",
     goto_side_effect: Exception | None = None,
+    evaluate_side_effect: list[object] | None = None,
 ) -> tuple[object, object]:
-    """Build a full Playwright mock chain and return (mock_playwright_cm, mock_browser)."""
+    """Build a full Playwright mock chain and return (mock_playwright_cm, mock_browser).
+
+    ``page.evaluate`` is called once for the ld+json script and, when that yields
+    nothing, a second time for the DOM-price fallback. Pass ``evaluate_side_effect``
+    to return distinct values for those successive calls; otherwise every call
+    returns ``evaluate_result``.
+    """
     mock_page = AsyncMock()
     if goto_side_effect is not None:
         mock_page.goto = AsyncMock(side_effect=goto_side_effect)
     else:
         mock_page.goto = AsyncMock()
     mock_page.content = AsyncMock(return_value=html_content)
-    mock_page.evaluate = AsyncMock(return_value=evaluate_result)
+    if evaluate_side_effect is not None:
+        mock_page.evaluate = AsyncMock(side_effect=evaluate_side_effect)
+    else:
+        mock_page.evaluate = AsyncMock(return_value=evaluate_result)
 
     mock_context = AsyncMock()
     mock_context.new_page = AsyncMock(return_value=mock_page)
@@ -248,10 +258,36 @@ async def test_amazon_scraper_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_amazon_scraper_no_ldjson() -> None:
+async def test_amazon_scraper_dom_fallback_when_no_ldjson() -> None:
+    """No ld+json offer block → price is read from the rendered DOM instead.
+
+    Regression guard for amazon.co.uk pages that load fine (HTTP 200) but ship no
+    ``application/ld+json``: the ld+json evaluate returns None and the DOM-price
+    evaluate returns the buy-box price, which must be recorded as a success.
+    """
     from app.scrapers.amazon import AmazonScraper
 
-    mock_pw_cm, _ = _make_playwright_mock(evaluate_result=None)
+    mock_pw_cm, _ = _make_playwright_mock(
+        evaluate_side_effect=[None, {"price": "107.5", "currency": "GBP"}],
+    )
+
+    with patch("playwright.async_api.async_playwright", return_value=mock_pw_cm):
+        scraper = AmazonScraper()
+        result = await scraper.fetch("https://amazon.co.uk/dp/B001")
+
+    assert result.extraction_status == ExtractionStatus.OK
+    assert result.price == Decimal("107.5")
+    assert result.currency == "GBP"
+
+
+@pytest.mark.asyncio
+async def test_amazon_scraper_no_price_anywhere() -> None:
+    """Neither ld+json nor the DOM fallback yields a price → extraction failed."""
+    from app.scrapers.amazon import AmazonScraper
+
+    mock_pw_cm, _ = _make_playwright_mock(
+        evaluate_side_effect=[None, None],
+    )
 
     with patch("playwright.async_api.async_playwright", return_value=mock_pw_cm):
         scraper = AmazonScraper()
@@ -259,6 +295,52 @@ async def test_amazon_scraper_no_ldjson() -> None:
 
     assert result.extraction_status == ExtractionStatus.EXTRACTION_FAILED
     assert result.price is None
+
+
+def test_normalize_price_text_handles_locale_and_junk() -> None:
+    """Locale separators are resolved by position; unparseable text yields None."""
+    from app.scrapers.amazon import _normalize_price_text
+
+    cases = {
+        "299.99": Decimal("299.99"),  # plain decimal
+        "1,234.56": Decimal("1234.56"),  # en-US: comma thousands, dot decimal
+        "1.234,56": Decimal("1234.56"),  # de-DE: dot thousands, comma decimal
+        "£1,234.56": Decimal("1234.56"),  # currency symbol stripped
+        "1.234.567,89": Decimal("1234567.89"),  # EU multi-group thousands
+        "1,234,567.89": Decimal("1234567.89"),  # US multi-group thousands
+        "1234,56": Decimal("1234.56"),  # comma-only, two-digit decimal
+        "1,234": Decimal("1234"),  # comma-only, three-digit thousands group
+        "1.234.567": Decimal("1234567"),  # dot-only thousands groups
+        "49": Decimal("49"),  # bare integer
+    }
+    for raw, expected in cases.items():
+        assert _normalize_price_text(raw) == expected, raw
+
+    for junk in ("", "   ", "N/A", "--", "£"):
+        assert _normalize_price_text(junk) is None, junk
+
+
+@pytest.mark.asyncio
+async def test_amazon_scraper_dom_fallback_parses_eu_format() -> None:
+    """A DOM buy-box price in EU format (1.234,56) records as 1234.56, not 1.234.
+
+    Regression guard for amazon.de/fr/es/it: the DOM script now returns the raw
+    price text and _normalize_price_text resolves the decimal separator, so the
+    old 'comma is always thousands' assumption no longer mis-parses EU prices.
+    """
+    from app.scrapers.amazon import AmazonScraper
+
+    mock_pw_cm, _ = _make_playwright_mock(
+        evaluate_side_effect=[None, {"price": "1.234,56", "currency": "EUR"}],
+    )
+
+    with patch("playwright.async_api.async_playwright", return_value=mock_pw_cm):
+        scraper = AmazonScraper()
+        result = await scraper.fetch("https://amazon.de/dp/B001")
+
+    assert result.extraction_status == ExtractionStatus.OK
+    assert result.price == Decimal("1234.56")
+    assert result.currency == "EUR"
 
 
 @pytest.mark.asyncio
@@ -317,3 +399,25 @@ def test_get_scraper_with_kwargs() -> None:
     scraper = get_scraper("generic", css_selector=".price")
     assert isinstance(scraper, GenericScraper)
     assert scraper.css_selector == ".price"
+
+
+# ── queue_for_source_type ───────────────────────────────────────────────────────
+
+
+def test_queue_for_source_type_amazon_uses_playwright() -> None:
+    # Amazon needs a browser → must run on the playwright worker's queue.
+    from app.scrapers.registry import queue_for_source_type
+
+    assert queue_for_source_type("amazon") == "playwright"
+
+
+def test_queue_for_source_type_generic_uses_default() -> None:
+    from app.scrapers.registry import queue_for_source_type
+
+    assert queue_for_source_type("generic") == "default"
+
+
+def test_queue_for_source_type_unknown_falls_back_to_default() -> None:
+    from app.scrapers.registry import queue_for_source_type
+
+    assert queue_for_source_type("something-else") == "default"

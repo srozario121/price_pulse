@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # ── App behaviour ─────────────────────────────────────────────────────────
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
+    # Verify the DB schema is at the Alembic head during application startup and
+    # refuse to start otherwise. Disabled by the E2E overlay, which provisions
+    # its schema via create_all rather than the migration chain.
+    MIGRATION_CHECK_ON_STARTUP: bool = True
     SCRAPE_INTERVAL_MINUTES: int = 30
     SCRAPE_MIN_DELAY_SECONDS: int = 2
     ALERT_COOLDOWN_HOURS: int = 24

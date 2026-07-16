@@ -54,9 +54,13 @@ def load_thresholds() -> dict:
 def latest_report_dir() -> Path:
     if not LOGS_QUALITY.exists():
         _die("No quality report found; run make quality first")
+    # Sort by mtime, then name as a deterministic tiebreak: report dirs are named
+    # with sortable timestamps (YYYYMMDDTHHMMSS), and two created in the same
+    # coarse-granularity mtime tick (fast CI filesystems) would otherwise order
+    # nondeterministically.
     dirs = sorted(
         [d for d in LOGS_QUALITY.iterdir() if d.is_dir() and d.name != "__pycache__"],
-        key=lambda d: d.stat().st_mtime,
+        key=lambda d: (d.stat().st_mtime, d.name),
     )
     if not dirs:
         _die("No quality report found; run make quality first")

@@ -67,4 +67,12 @@ celery_app.conf.update(
     },
     # ── RedBeat scheduler ─────────────────────────────────────────────────────
     redbeat_redis_url=settings.REDIS_URL,
+    # Schedules are added to Redis dynamically (per-product, at create time), so
+    # beat must re-read Redis frequently to pick up an entry created after it
+    # started. Without this, an idle beat with no entries sleeps for the default
+    # loop interval (~300s) and a product created seconds later would not scrape
+    # until minutes later — long past any reasonable wait. Cap the loop at 5s so
+    # newly-registered schedules fire promptly (negligible overhead at 30-min
+    # production intervals).
+    beat_max_loop_interval=5,
 )

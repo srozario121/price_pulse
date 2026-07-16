@@ -150,7 +150,7 @@ class TestTriggerScrape:
         mock_task.id = "test-task-id-abc"
 
         with patch("app.api.v1.prices.scrape_product") as mock_scrape:
-            mock_scrape.delay.return_value = mock_task
+            mock_scrape.apply_async.return_value = mock_task
             resp = await pg_async_client.post(f"/api/v1/products/{product['id']}/scrape")
 
         assert resp.status_code == 202
@@ -158,6 +158,8 @@ class TestTriggerScrape:
         assert data["task_id"] == "test-task-id-abc"
         assert data["status"] == "queued"
         assert data["product"]["id"] == product["id"]
+        # Generic product → default queue.
+        mock_scrape.apply_async.assert_called_once_with((product["id"],), queue="default")
 
     @pytest.mark.asyncio
     async def test_scrape_inactive_product_returns_400(self, pg_async_client):

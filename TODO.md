@@ -321,6 +321,121 @@ All four layers (Arrange-Assert-Act for backend tests):
 
 ---
 
+## 15. Anti-Blocking: Rotating Residential Proxies, Realistic UA/Headers & Stealth Context
+
+Scheduled/at-scale scraping of real retail sites (Amazon in particular) will draw
+CAPTCHAs, rate-limits, and IP bans even now that the DOM-price fallback (2026-07-12,
+`amazon.py`) handles missing `ld+json`. Harden the fetch layer so real sources stay
+scrapeable in production, not just for a one-off request from a fresh datacenter IP.
+
+**Motivation**: surfaced during the 2026-07-12 Amazon E2E investigation — the current
+default Playwright context (`browser.new_context()` with a stock headless UA and no
+proxy) works against a cold URL but is trivially fingerprintable and single-IP.
+
+### Design decisions (open)
+- Proxy provider + rotation model: per-request vs sticky per-product sessions; managed pool vs BYO list.
+- Where the UA/header pool lives (config file vs Settings vs external) and how it's kept current.
+- Whether to add a dedicated `BLOCKED` / `CAPTCHA` `ExtractionStatus` (see Item 16 — `selector_miss` is a distinct signal from a block).
+- `playwright-stealth` dependency vs hand-rolled init scripts (dependency risk / maintenance).
+
+### Tasks
+- [ ] Add proxy configuration to `core/config.py` `Settings` (pool source, rotation strategy, optional per-domain overrides); document in `.env.example`.
+- [ ] Wire proxy into both fetch paths: shared httpx client (`scrapers/http_client.py`) and the Playwright context (`amazon.py` → `browser.new_context(proxy=…)`).
+- [ ] Rotate proxy per request (or on block detection) rather than a fixed egress IP.
+- [ ] Set realistic `User-Agent` + `Accept-Language`/`Sec-CH-*` headers; rotate UA from a maintained pool matched to the browser build.
+- [ ] Apply stealth to the Playwright context (`navigator.webdriver`, plugins, languages, WebGL vendor, `chrome` runtime) via init scripts or `playwright-stealth`.
+- [ ] Detect block/CAPTCHA responses (robot-check markers, HTTP 429/503) and classify them distinctly (feeds Item 16 + `/products/failing`), then trigger proxy rotation + bounded retry.
+- [ ] Per-domain rate limiting / exponential backoff; respect `robots.txt` and ToS constraints.
+
+### Test strategy
+- **Unit**: proxy/UA rotation selection is deterministic under a seeded pool; block-marker classifier maps known robot-check HTML + 429/503 to the blocked status; stealth init script injected into the context.
+- **Integration**: httpx + Playwright honour a configured proxy (assert egress via a local proxy stub); rotation advances across calls.
+- **Live E2E (`live_api`, opt-in)**: a real Amazon scrape through a configured proxy records `ok` — kept out of the default run (external dependency + cost).
+
+### Documentation
+- **`core/config.py` / `.env.example`** — proxy + UA settings.
+- **`scrapers/http_client.py`, `scrapers/amazon.py`** — proxy/stealth wiring.
+- **`docs/decisions/`** — ADR: anti-blocking strategy (proxy model, stealth approach, block-detection taxonomy).
+- **`CHANGELOG.md`** — `### Added` entry.
+
+---
+
+## 16. Handle Selector Drift
+
+DOM price extraction (added 2026-07-12) depends on a hardcoded, ordered list of Amazon
+CSS selectors (`amazon.py` `_DOM_PRICE_SCRIPT`). Amazon rotates its markup periodically,
+so all selectors can go stale at once — silently degrading every Amazon product to
+`extraction_failed` while the page itself loads fine (HTTP 200, real title). Detect and
+adapt to drift instead of waiting for a user to notice missing prices.
+
+**Motivation**: the 2026-07-12 fix works today but is brittle by construction; a markup
+change is a *when*, not an *if*. A "page loaded, title present, no price matched" outcome
+is diagnostic of drift specifically and should be distinguishable from a block (Item 15).
+
+### Design decisions (open)
+- Config format/location for per-`source_type` selector lists (externalise from code so they can be updated without a redeploy).
+- Drift-detection thresholds (what fraction of a source's active products failing over what window constitutes drift).
+- Canary product selection + expected-price-range maintenance.
+
+### Tasks
+- [ ] Externalise selector lists to config (per `source_type`), versioned and hot-updatable without a code deploy.
+- [ ] Add a distinct `selector_miss` extraction outcome: HTTP 200 + a real product title but no selector matched a price — separate from `http_error` and from a block (Item 15).
+- [ ] Aggregate drift monitor: flag a spike in `selector_miss`/`extraction_failed` across many products of the *same* `source_type` (extends the `monitoring_service` / `/products/failing` work).
+- [ ] Periodic canary scrape of a known-stable product with an expected price range; fail loud (alert) when extraction breaks.
+- [ ] Layered extraction fallback chain (ld+json → DOM selectors → embedded state JSON / `meta` tags / regex over `a-offscreen`), first plausible price wins.
+- [ ] Golden-HTML regression fixtures: capture real Amazon HTML snapshots, unit-test the extractor against them, refresh on a schedule.
+
+### Test strategy
+- **Unit**: extractor against golden-HTML fixtures (current markup + a deliberately-drifted variant → `selector_miss`, not a crash); config-driven selector loading.
+- **Integration**: aggregate drift monitor over seeded `PriceRecord` rows (N same-`source_type` products all `selector_miss` in-window → flagged).
+- **Live E2E (`live_api`, opt-in)**: canary scrape of a stable product returns a price within the expected band.
+
+### Documentation
+- **`scrapers/amazon.py` + new selector config** — externalised selectors + fallback chain.
+- **`services/monitoring_service.py`** — drift aggregation (builds on Item 11/`/products/failing`).
+- **`docs/decisions/`** — ADR: selector-drift detection & extraction-fallback strategy.
+- **`CHANGELOG.md`** — `### Added` entry.
+
+---
+
+## 17. Queued-Scrape Visibility: List Queued/Running Jobs & Their Statuses
+
+There is no first-class, product-facing way to see what scrapes are queued, in-flight, or
+failed. `POST /products/{id}/scrape` returns a `task_id` + `status: "queued"` and then the
+outcome is only observable indirectly via new `PriceRecord` rows; Flower exists in the dev
+stack (`:5555`) but is an ops tool, not an app surface. Give operators/users a view of
+scrape-job lifecycle and status.
+
+**Motivation**: during E2E verification the only way to confirm a queued scrape's fate was
+to tail worker logs / poll `/prices`. A job-status surface makes queue depth and failures
+observable directly.
+
+### Design decisions (open)
+- Source of truth: a new persisted `ScrapeJob` table (durable, queryable, survives worker restarts) vs the Celery result backend (already present, but ephemeral/TTL'd) — leaning `ScrapeJob` for durability + rich filtering.
+- Retention/pruning policy for job history.
+- Native app view vs simply surfacing Flower.
+
+### Tasks
+- [ ] Persist task lifecycle: on dispatch create a `ScrapeJob` (product_id, task_id, queue, status `queued`→`started`→`success`/`failure`, enqueued/started/finished timestamps, result summary/error). Update via Celery signals (`task_prerun`/`task_postrun`/`task_failure`) or the result backend.
+- [ ] `GET /api/v1/scrape-jobs` — paginated, filterable by `product_id` / `status` / `queue`; and `GET /api/v1/products/{id}/scrape-jobs`.
+- [ ] Optionally expose live queue depth per queue (`default`, `playwright`) via Celery `inspect` / broker introspection.
+- [ ] Frontend: an activity/"Jobs" view of recent scrape jobs + statuses; a per-product last-scrape status badge on the dashboard.
+- [ ] Reconcile with the existing on-demand trigger response (`task_id` + `status`) so it links to the new job record.
+
+### Test strategy
+- **Unit**: the new route handler + `ScrapeJobRead` schema (pagination envelope, empty list, filter validation, unknown-product 404); signal handlers transition job status correctly.
+- **Integration** (real DB): `ScrapeJob` rows written on dispatch and updated on completion; list endpoints return correct ordering/pagination/filtering.
+- **Live E2E**: trigger a scrape → the job appears as `queued`, then transitions to `success`/`failure` and is visible via the API.
+
+### Documentation
+- **`backend/app/models/`** — new `ScrapeJob` model + migration.
+- **`backend/app/api/v1/`** — new scrape-jobs routes + schema.
+- **`backend/app/tasks/scrape.py` / `workers/`** — Celery signal wiring.
+- **`frontend/src/`** — jobs/activity view + status badge.
+- **`CHANGELOG.md`** — `### Added` entry.
+
+---
+
 ## References
 
 - FastAPI docs: https://fastapi.tiangolo.com/

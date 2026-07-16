@@ -21,6 +21,7 @@ from app.models.product import Product
 from app.schemas.common import PaginatedResponse, ScrapeJobResponse
 from app.schemas.price import PriceRecordRead
 from app.schemas.product import ProductRead
+from app.scrapers.registry import queue_for_source_type
 from app.tasks.scrape import scrape_product
 
 logger = structlog.get_logger(__name__)
@@ -98,8 +99,11 @@ async def trigger_scrape(
             detail="Product is not active",
         )
 
-    task = scrape_product.delay(product_id)
-    logger.info("scrape_job_queued", product_id=product_id, task_id=task.id)
+    # Route to the queue whose worker can run this source type's scraper:
+    # Amazon needs the Playwright worker; everything else uses the default worker.
+    queue = queue_for_source_type(str(product.source_type))
+    task = scrape_product.apply_async((product_id,), queue=queue)
+    logger.info("scrape_job_queued", product_id=product_id, task_id=task.id, queue=queue)
 
     return ScrapeJobResponse(
         task_id=str(task.id),
