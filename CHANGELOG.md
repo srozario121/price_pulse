@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-15
+
 ### Added (Scraping & migration robustness)
 
 - **Startup schema-version guard**: the application now verifies at startup that the database is at the Alembic migration head and refuses to start otherwise, logging an actionable `db_schema_out_of_date` error (pointing at `make migrate`) instead of failing later with a confusing runtime `UndefinedTableError`. New `app/core/migrations.py`; wired into the FastAPI lifespan after the DB connectivity probe. Controlled by the new `MIGRATION_CHECK_ON_STARTUP` setting (default `true`); the E2E overlay sets it `false` because that harness provisions its schema via `create_all` rather than the migration chain.
@@ -220,5 +222,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `config/quality-thresholds.toml`: quality gate configuration
 - `.github/workflows/ci.yml`: CI pipeline with lint, test-backend (Postgres service), test-frontend, and build jobs
 
-[Unreleased]: https://github.com/org/price-pulse/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/org/price-pulse/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/org/price-pulse/compare/v0.1.0...v0.1.3
 [0.1.0]: https://github.com/org/price-pulse/releases/tag/v0.1.0
