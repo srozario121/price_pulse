@@ -49,11 +49,21 @@ eslint_max_warnings = 0
 # Re-baselined 2026-07-15 (739 -> 757): added /products/failing pagination tests
 # (same route/service lines, integration tier) and an Amazon EU-price DOM-fallback
 # test (same fetch/_parse path already covered by the ld+json tests, unit tier).
-baseline_backend_duplicate_lines = 757
+#
+# Re-baselined 2026-07-17 (757 -> 941): Item 15 anti-blocking. The new proxy/stealth
+# test suites (test_http_client_proxy.py, test_amazon_anti_blocking.py,
+# test_anti_blocking.py) each assert a *distinct* behaviour — proxy egress, rotation
+# order, block-budget exhaustion, dead-proxy handling, no-proxy CAPTCHA, stealth
+# context construction — but necessarily re-run the shared fetch_page /
+# _fetch_via_proxy / _navigate_and_extract / _build_context execution paths, and the
+# block/category integration test re-covers the /products/failing route + service
+# lines. This is the "different behaviours sharing an execution path" case the gate
+# re-baselines for, not net-new redundant assertions.
+baseline_backend_duplicate_lines = 941
 baseline_frontend_duplicate_lines = 1112
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
-max_intra_tier_duplicate_lines_backend = 757
+max_intra_tier_duplicate_lines_backend = 941
 max_intra_tier_duplicate_lines_frontend = 1112

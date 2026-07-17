@@ -15,9 +15,16 @@ column stays ``String(20)`` and becomes a genuinely open string, which is what
 the app-level ``ExtractionStatus`` StrEnum already assumes. Future status
 additions then need no further DB change.
 
-``downgrade`` recreates the original three-value constraint (which would fail if
-any 'blocked'/'captcha'/'selector_miss' rows exist — expected, since those
-values are only produced after this migration is applied).
+``upgrade`` uses ``DROP CONSTRAINT IF EXISTS`` so it is a no-op if the constraint
+is absent: alembic's online ``add_column`` in migration 0004 does not always
+materialise a ``CheckConstraint`` embedded in the column (the ``--sql`` render
+shows the clause, but the executed DDL may omit it), so on some databases the
+named constraint was never actually created. Either way the outcome we want —
+``extraction_status`` as a genuinely open string column — holds.
+
+``downgrade`` best-effort recreates the original three-value constraint (skipped
+if it already exists); it will fail if any 'blocked'/'captcha'/'selector_miss'
+rows exist, which is expected since those values only appear after this upgrade.
 """
 
 from collections.abc import Sequence
@@ -31,16 +38,15 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.drop_constraint(
-        "ck_price_record_extraction_status",
-        "price_record",
-        type_="check",
+    # IF EXISTS: robust whether or not migration 0004 actually created the
+    # named constraint at runtime (see module docstring).
+    op.execute(
+        "ALTER TABLE price_record DROP CONSTRAINT IF EXISTS ck_price_record_extraction_status"
     )
 
 
 def downgrade() -> None:
-    op.create_check_constraint(
-        "ck_price_record_extraction_status",
-        "price_record",
-        "extraction_status IN ('ok', 'extraction_failed', 'http_error')",
+    op.execute(
+        "ALTER TABLE price_record ADD CONSTRAINT ck_price_record_extraction_status "
+        "CHECK (extraction_status IN ('ok', 'extraction_failed', 'http_error'))"
     )
