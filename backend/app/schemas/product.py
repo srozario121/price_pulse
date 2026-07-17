@@ -41,9 +41,14 @@ class FailingProductRead(BaseModel):
     Surfaced by ``GET /products/failing`` so a quietly-broken crawl (e.g. a
     permanently CAPTCHA-walled source) is visible instead of silently recording
     price-less records forever.
+
+    ``failure_category`` (Item 15) groups the latest failure as ``blocked`` /
+    ``captcha`` / ``other`` so an anti-blocking spike is distinguishable from
+    ordinary extraction/HTTP failures.
     """
 
     product: ProductRead
     latest_status: str
     latest_captured_at: datetime
     last_success_at: datetime | None
+    failure_category: str

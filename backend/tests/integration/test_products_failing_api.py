@@ -209,6 +209,37 @@ class TestListFailingProducts:
         resp = await pg_async_client.get("/api/v1/products/failing", params={"limit": 101})
         assert resp.status_code == 422
 
+    @pytest.mark.asyncio
+    async def test_blocked_and_captcha_category_and_aggregate_counts(
+        self, pg_async_client, pg_engine
+    ):
+        # Arrange: three failing products — one blocked, one captcha, one plain failure.
+        cases = [
+            ("https://example.com/blocked", "blocked", "blocked"),
+            ("https://example.com/captcha", "captcha", "captcha"),
+            ("https://example.com/failed", "extraction_failed", "other"),
+        ]
+        ids_by_category: dict[str, int] = {}
+        for url, status, category in cases:
+            product = await _create_product(pg_async_client, {**PRODUCT_PAYLOAD, "url": url})
+            ids_by_category[category] = product["id"]
+            await _seed_record(
+                pg_engine, product["id"], status=status, captured_at="2026-04-01T10:00:00Z"
+            )
+
+        # Act
+        resp = await pg_async_client.get("/api/v1/products/failing", params={"min_failures": 1})
+
+        # Assert: per-product failure_category and aggregate block/captcha counts.
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        category_by_id = {item["product"]["id"]: item["failure_category"] for item in body["items"]}
+        assert category_by_id[ids_by_category["blocked"]] == "blocked"
+        assert category_by_id[ids_by_category["captcha"]] == "captcha"
+        assert category_by_id[ids_by_category["other"]] == "other"
+        assert body["blocked_count"] == 1
+        assert body["captcha_count"] == 1
+
 
 # ── monitoring_service.find_failing_products (direct) ───────────────────────────
 

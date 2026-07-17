@@ -38,4 +38,12 @@ def test_extraction_status_from_string() -> None:
 
 def test_extraction_status_all_members() -> None:
     members = {m.value for m in ExtractionStatus}
-    assert members == {"ok", "extraction_failed", "http_error"}
+    assert members == {"ok", "extraction_failed", "http_error", "blocked", "captcha"}
+
+
+def test_anti_blocking_statuses() -> None:
+    # Item 15: block/CAPTCHA statuses distinct from transient/selector failures.
+    assert ExtractionStatus.BLOCKED == "blocked"
+    assert ExtractionStatus.CAPTCHA == "captcha"
+    assert ExtractionStatus("blocked") == ExtractionStatus.BLOCKED
+    assert ExtractionStatus("captcha") == ExtractionStatus.CAPTCHA

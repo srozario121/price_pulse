@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Anti-blocking — Item 15)
+
+- **Rotating-proxy fetch hardening** (`app/scrapers/anti_blocking.py`): a shared anti-blocking module used by **both** fetch paths (httpx `http_client` and Playwright `amazon`) — a consolidated User-Agent pool with a matched header set (`Accept-Language` + `Sec-CH-UA*` client hints that agree with the chosen UA, omitted for Firefox/Safari), a `ProxyRotator` (per-request proxy pick + `next_proxy()` rotation over the BYO list), and a proxy normaliser producing both the httpx URL string and the Playwright `proxy` dict.
+- **`PROXY_URLS` / `MAX_PROXY_ROTATIONS` settings** (`core/config.py`, `.env.example`): bring-your-own proxy list (comma-separated, validated at startup; empty ⇒ direct egress) and the rotate-on-block budget (default 2). On a detected block the fetch rotates proxies up to the budget, then resolves to `blocked`/`captcha`; a dead/unreachable proxy rotates without consuming the budget, and all-dead fails bounded rather than looping.
+- **Block/CAPTCHA detection in both paths** (`classify_block`): a shared classifier maps 429/503 and known robot-check/ban HTML markers to two new `ExtractionStatus` values — `blocked` and `captcha` — so a 200-status challenge page is recorded as `captcha` instead of being mis-classified as `extraction_failed`.
+- **Playwright stealth** (`app/scrapers/amazon.py`): `playwright-stealth` applied to each context, plus custom `add_init_script` top-ups patching `navigator.webdriver`, plugins, languages, the `window.chrome` runtime, and the WebGL vendor/renderer. New `playwright-stealth>=2.0.0` dependency.
+- **Block breakdown on `GET /products/failing`** (`monitoring_service`, `FailingProductRead`, `FailingProductsResponse`): each flagged product now reports a `failure_category` (`blocked` / `captcha` / `other`) and the response carries aggregate `blocked_count` / `captcha_count`, so an anti-blocking spike is visible without a new route.
+
+### Changed (Anti-blocking — Item 15)
+
+- **`extraction_status` is now an open string column** (Alembic migration `0006`): the `ck_price_record_extraction_status` CHECK constraint (added in `0004`, restricting values to `ok`/`extraction_failed`/`http_error`) is dropped so the new `blocked`/`captcha` values — and future additions like Item 16's `selector_miss` — need no further DB change. The column stays `String(20)`; the app-level `ExtractionStatus` StrEnum is the source of truth.
+- The httpx fetch path now selects a proxy per request and reuses (does not duplicate) the existing exponential back-off, `Retry-After` handling, and Redis per-domain rate-limit; a persistent 429/503 with no proxy configured now resolves to `blocked` rather than a bare `http_error`. robots.txt handling is unchanged (log-and-proceed).
+
 ## [0.1.3] - 2026-07-15
 
 ### Added (Scraping & migration robustness)

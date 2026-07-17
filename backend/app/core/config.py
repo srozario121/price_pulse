@@ -8,10 +8,14 @@ CORS_ORIGINS is read from the environment as a comma-separated string
 a list[str] by the field validator.
 """
 
-from typing import Any
+from typing import Annotated, Any
+from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+# Proxy URL schemes accepted in PROXY_URLS (Item 15 anti-blocking).
+_PROXY_SCHEMES = ("http", "https", "socks5", "socks5h", "socks4")
 
 
 class Settings(BaseSettings):
@@ -46,6 +50,21 @@ class Settings(BaseSettings):
     SCRAPE_MIN_DELAY_SECONDS: int = 2
     ALERT_COOLDOWN_HOURS: int = 24
 
+    # ── Anti-blocking (Item 15) ───────────────────────────────────────────────
+    # Bring-your-own rotating-proxy list, comma-separated in the env var
+    # (e.g. "http://user:pass@host1:port,http://user:pass@host2:port"), coerced
+    # to list[str] like CORS_ORIGINS. Empty ⇒ proxying disabled (direct egress).
+    # A residential/rotating list is expected in production so scheduled scrapes
+    # of bot-protected retailers are not single-IP and trivially bannable.
+    # NoDecode: skip pydantic-settings' JSON pre-decode so the raw env string
+    # (empty, or comma-separated) reaches parse_proxy_urls rather than crashing
+    # json.loads on a non-JSON value.
+    PROXY_URLS: Annotated[list[str], NoDecode] = []
+    # Max proxy rotations per fetch when a block/CAPTCHA is detected before the
+    # scrape resolves to BLOCKED/CAPTCHA. A dead/unreachable proxy rotates too
+    # but does not consume this budget.
+    MAX_PROXY_ROTATIONS: int = 2
+
     # ── E2E test hooks ────────────────────────────────────────────────────────
     # Mounts gated test-only control endpoints under /api/v1/_test/ when true.
     # MUST stay false outside the e2e docker-compose overlay — it is set to true
@@ -68,6 +87,36 @@ class Settings(BaseSettings):
         if isinstance(v, list):
             return v
         return []
+
+    @field_validator("PROXY_URLS", mode="before")
+    @classmethod
+    def parse_proxy_urls(cls, v: Any) -> list[str]:  # noqa: ANN401
+        """Accept a comma-separated string or list; validate each proxy URL.
+
+        A malformed entry raises here (at startup / Settings construction) rather
+        than surfacing as an opaque runtime crash mid-scrape.
+        """
+        if isinstance(v, str):
+            items = [p.strip() for p in v.split(",") if p.strip()]
+        elif isinstance(v, list):
+            items = [str(p).strip() for p in v if str(p).strip()]
+        else:
+            return []
+        for entry in items:
+            parsed = urlparse(entry)
+            if parsed.scheme not in _PROXY_SCHEMES or not parsed.hostname:
+                raise ValueError(
+                    f"Invalid proxy URL in PROXY_URLS: {entry!r} — expected "
+                    f"scheme://[user:pass@]host[:port] with one of {_PROXY_SCHEMES}"
+                )
+        return items
+
+    @field_validator("MAX_PROXY_ROTATIONS")
+    @classmethod
+    def max_proxy_rotations_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("MAX_PROXY_ROTATIONS must be >= 0")
+        return v
 
     @field_validator("SECRET_KEY")
     @classmethod
