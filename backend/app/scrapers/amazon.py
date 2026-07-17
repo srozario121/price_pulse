@@ -12,8 +12,8 @@ from app.core.config import settings
 from app.models.enums import ExtractionStatus
 from app.schemas.scraper import ScrapedResult
 from app.scrapers.anti_blocking import (
+    ACCEPT_LANGUAGE,
     ProxyRotator,
-    build_headers,
     choose_user_agent,
     classify_block,
     normalise_proxy,
@@ -62,12 +62,18 @@ async def _apply_stealth(context: object, page: object) -> None:
 
 
 async def _build_context(browser: object, proxy_url: str | None) -> object:
-    """Create a new browser context with a rotated UA, matched headers, and proxy."""
+    """Create a new browser context with a rotated UA, Accept-Language, and proxy.
+
+    Only ``Accept-Language`` is pinned on the context — Chromium (with
+    playwright-stealth) generates UA-consistent ``Sec-CH-UA*``, per-request
+    ``Sec-Fetch-*`` and ``Accept-Encoding`` itself. Forcing those to static
+    values across every request/subresource is an unrealistic fingerprint that
+    would undercut the stealth we apply.
+    """
     user_agent = choose_user_agent()
-    extra_headers = {k: v for k, v in build_headers(user_agent).items() if k not in ("User-Agent",)}
     kwargs: dict[str, object] = {
         "user_agent": user_agent,
-        "extra_http_headers": extra_headers,
+        "extra_http_headers": {"Accept-Language": ACCEPT_LANGUAGE},
     }
     if proxy_url is not None:
         kwargs["proxy"] = normalise_proxy(proxy_url).playwright

@@ -43,7 +43,8 @@ _ACCEPT = (
     "text/html,application/xhtml+xml,application/xml;q=0.9,"
     "image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
 )
-_ACCEPT_LANGUAGE = "en-GB,en;q=0.9"
+# Public so the Playwright path can pin just this on the browser context.
+ACCEPT_LANGUAGE = "en-GB,en;q=0.9"
 
 
 def choose_user_agent() -> str:
@@ -88,8 +89,12 @@ def build_headers(user_agent: str) -> dict[str, str]:
     headers: dict[str, str] = {
         "User-Agent": user_agent,
         "Accept": _ACCEPT,
-        "Accept-Language": _ACCEPT_LANGUAGE,
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": ACCEPT_LANGUAGE,
+        # Only advertise encodings httpx can actually decode. Requesting "br"
+        # without a Brotli decoder installed makes response.text raise a
+        # DecodingError on a Brotli-compressed reply, which would also break
+        # classify_block. gzip/deflate are always decodable by httpx.
+        "Accept-Encoding": "gzip, deflate",
         "Upgrade-Insecure-Requests": "1",
     }
 

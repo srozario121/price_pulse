@@ -123,6 +123,8 @@ class TestHeaders:
         assert '"124"' in headers["Sec-CH-UA"]
         assert headers["Sec-CH-UA-Mobile"] == "?0"
         assert headers["Sec-CH-UA-Platform"] == '"Windows"'
+        # Only advertise encodings httpx can decode — no Brotli (no decoder dep).
+        assert "br" not in headers["Accept-Encoding"]
 
     def test_edge_ua_reports_edge_brand(self):
         # Arrange / Act

@@ -104,9 +104,10 @@ async def test_context_built_with_proxy_ua_and_matched_headers(_pin_rotation, mo
         "password": "pass",
     }
     assert kwargs["user_agent"] in USER_AGENTS
-    # Matched headers ride on the context, without duplicating the UA header.
-    assert kwargs["extra_http_headers"]["Accept-Language"] == "en-GB,en;q=0.9"
-    assert "User-Agent" not in kwargs["extra_http_headers"]
+    # Only Accept-Language is pinned on the context; Sec-CH-UA*/Sec-Fetch-*/
+    # Accept-Encoding are left to Chromium (+ stealth) to avoid a static,
+    # unrealistic fingerprint across subresources.
+    assert kwargs["extra_http_headers"] == {"Accept-Language": "en-GB,en;q=0.9"}
 
 
 @pytest.mark.asyncio
