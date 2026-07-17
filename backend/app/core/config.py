@@ -8,11 +8,11 @@ CORS_ORIGINS is read from the environment as a comma-separated string
 a list[str] by the field validator.
 """
 
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Proxy URL schemes accepted in PROXY_URLS (Item 15 anti-blocking).
 _PROXY_SCHEMES = ("http", "https", "socks5", "socks5h", "socks4")
@@ -56,7 +56,10 @@ class Settings(BaseSettings):
     # to list[str] like CORS_ORIGINS. Empty ⇒ proxying disabled (direct egress).
     # A residential/rotating list is expected in production so scheduled scrapes
     # of bot-protected retailers are not single-IP and trivially bannable.
-    PROXY_URLS: list[str] = []
+    # NoDecode: skip pydantic-settings' JSON pre-decode so the raw env string
+    # (empty, or comma-separated) reaches parse_proxy_urls rather than crashing
+    # json.loads on a non-JSON value.
+    PROXY_URLS: Annotated[list[str], NoDecode] = []
     # Max proxy rotations per fetch when a block/CAPTCHA is detected before the
     # scrape resolves to BLOCKED/CAPTCHA. A dead/unreachable proxy rotates too
     # but does not consume this budget.
