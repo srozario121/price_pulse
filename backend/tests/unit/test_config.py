@@ -165,6 +165,80 @@ class TestCeleryBrokerUrl:
         assert s.CELERY_BROKER_URL == broker
 
 
+class TestProxySettings:
+    """PROXY_URLS parsing/validation and MAX_PROXY_ROTATIONS bounds (Item 15)."""
+
+    def test_empty_proxy_urls_defaults_to_empty_list(self):
+        # Arrange / Act
+        s = make_settings(
+            SECRET_KEY="a" * 32,
+            DEBUG=True,
+            DATABASE_URL="sqlite+aiosqlite:///:memory:",
+        )
+
+        # Assert — proxying disabled by default
+        assert s.PROXY_URLS == []
+        assert s.MAX_PROXY_ROTATIONS == 2
+
+    def test_comma_separated_proxy_urls_coerced_to_list(self):
+        # Arrange
+        raw = "http://user:pass@host1:8080, http://host2:3128"
+
+        # Act
+        s = make_settings(
+            SECRET_KEY="a" * 32,
+            DEBUG=True,
+            DATABASE_URL="sqlite+aiosqlite:///:memory:",
+            PROXY_URLS=raw,
+        )
+
+        # Assert — split on comma, whitespace stripped
+        assert s.PROXY_URLS == ["http://user:pass@host1:8080", "http://host2:3128"]
+
+    def test_socks_scheme_accepted(self):
+        # Arrange / Act
+        s = make_settings(
+            SECRET_KEY="a" * 32,
+            DEBUG=True,
+            DATABASE_URL="sqlite+aiosqlite:///:memory:",
+            PROXY_URLS="socks5://host:1080",
+        )
+
+        # Assert
+        assert s.PROXY_URLS == ["socks5://host:1080"]
+
+    def test_malformed_proxy_url_raises_at_startup(self):
+        # Arrange — a non-URL entry must fail Settings construction, not a scrape
+        # Act / Assert
+        with pytest.raises(ValidationError, match="Invalid proxy URL"):
+            make_settings(
+                SECRET_KEY="a" * 32,
+                DEBUG=True,
+                DATABASE_URL="sqlite+aiosqlite:///:memory:",
+                PROXY_URLS="not-a-url",
+            )
+
+    def test_unsupported_scheme_raises(self):
+        # Arrange / Act / Assert
+        with pytest.raises(ValidationError, match="Invalid proxy URL"):
+            make_settings(
+                SECRET_KEY="a" * 32,
+                DEBUG=True,
+                DATABASE_URL="sqlite+aiosqlite:///:memory:",
+                PROXY_URLS="ftp://host:21",
+            )
+
+    def test_negative_max_rotations_raises(self):
+        # Arrange / Act / Assert
+        with pytest.raises(ValidationError, match="MAX_PROXY_ROTATIONS must be >= 0"):
+            make_settings(
+                SECRET_KEY="a" * 32,
+                DEBUG=True,
+                DATABASE_URL="sqlite+aiosqlite:///:memory:",
+                MAX_PROXY_ROTATIONS=-1,
+            )
+
+
 class TestDefaults:
     """Sensible defaults are present when not overridden."""
 

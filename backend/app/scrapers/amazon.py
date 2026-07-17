@@ -8,12 +8,78 @@ from decimal import Decimal, InvalidOperation
 
 import structlog
 
+from app.core.config import settings
 from app.models.enums import ExtractionStatus
 from app.schemas.scraper import ScrapedResult
+from app.scrapers.anti_blocking import (
+    ProxyRotator,
+    build_headers,
+    choose_user_agent,
+    classify_block,
+    normalise_proxy,
+)
 from app.scrapers.base import BaseScraper
 from app.scrapers.exceptions import ScraperError
 
 logger = structlog.get_logger()
+
+# Custom stealth top-ups layered on top of playwright-stealth, patching the
+# fingerprint surfaces bot detectors probe most: the webdriver flag, an empty
+# plugin array, languages, the missing window.chrome runtime, and the headless
+# WebGL vendor/renderer. Registered via add_init_script so they run on every
+# navigation, before page scripts execute.
+_STEALTH_INIT_SCRIPT = """
+(() => {
+  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+  Object.defineProperty(navigator, 'languages', { get: () => ['en-GB', 'en'] });
+  if (!window.chrome) { window.chrome = { runtime: {} }; }
+  try {
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function (p) {
+      if (p === 37445) return 'Intel Inc.';            // UNMASKED_VENDOR_WEBGL
+      if (p === 37446) return 'Intel Iris OpenGL Engine';  // UNMASKED_RENDERER_WEBGL
+      return getParameter.call(this, p);
+    };
+  } catch (e) {}
+})();
+"""
+
+
+async def _apply_stealth(context: object, page: object) -> None:
+    """Apply playwright-stealth to *context*, then layer the custom init-script top-ups.
+
+    Library application is best-effort — a version/import mismatch must not fail a
+    scrape — but the custom ``add_init_script`` patches are always registered.
+    """
+    try:
+        from playwright_stealth import Stealth
+
+        await Stealth().apply_stealth_async(context)
+    except Exception as exc:  # noqa: BLE001 — best-effort; custom top-ups still apply
+        logger.debug("playwright_stealth_unavailable", error=str(exc))
+    await context.add_init_script(_STEALTH_INIT_SCRIPT)  # type: ignore[attr-defined]
+
+
+async def _build_context(browser: object, proxy_url: str | None) -> object:
+    """Create a new browser context with a rotated UA, matched headers, and proxy."""
+    user_agent = choose_user_agent()
+    extra_headers = {k: v for k, v in build_headers(user_agent).items() if k not in ("User-Agent",)}
+    kwargs: dict[str, object] = {
+        "user_agent": user_agent,
+        "extra_http_headers": extra_headers,
+    }
+    if proxy_url is not None:
+        kwargs["proxy"] = normalise_proxy(proxy_url).playwright
+    return await browser.new_context(**kwargs)  # type: ignore[attr-defined]
+
+
+async def _safe_close(closable: object) -> None:
+    try:
+        await closable.close()  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 — teardown best-effort
+        pass
+
 
 # JavaScript snippet to extract price from ld+json structured data
 _LD_JSON_SCRIPT = """
@@ -181,7 +247,7 @@ async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) ->
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
     try:
-        await page.goto(url, timeout=30_000)  # type: ignore[attr-defined]
+        response = await page.goto(url, timeout=30_000)  # type: ignore[attr-defined]
     except PlaywrightTimeoutError:
         logger.warning("amazon_scraper_timeout", url=url)
         return ScrapedResult(
@@ -196,6 +262,27 @@ async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) ->
 
     html = await page.content()  # type: ignore[attr-defined]
     html_hash = html_hash_fn(html)  # type: ignore[operator]
+
+    # Classify blocks BEFORE extraction: a 200-status robot-check page has no
+    # price, and must record BLOCKED/CAPTCHA rather than extraction_failed (which
+    # Item 16 reserves for genuine selector drift) — and must never be fed to
+    # selector generation. Runs the same classifier as the httpx path.
+    status_code = response.status if response is not None else 200
+    block = classify_block(status_code, html)
+    if block is not None:
+        logger.warning(
+            "amazon_scraper_blocked", url=url, status=status_code, classification=block.value
+        )
+        return ScrapedResult(
+            url=url,
+            html=html,
+            html_hash=html_hash,
+            price=None,
+            currency=None,
+            scraped_at=datetime.now(UTC),
+            extraction_status=block,
+        )
+
     ld_result = await page.evaluate(_LD_JSON_SCRIPT)  # type: ignore[attr-defined]
 
     if ld_result is None:
@@ -218,27 +305,60 @@ async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) ->
     return _parse_ld_result(ld_result, html, html_hash, url)
 
 
+_BLOCK_STATUSES = (ExtractionStatus.BLOCKED, ExtractionStatus.CAPTCHA)
+
+
 class AmazonScraper(BaseScraper):
     """Playwright-based scraper for Amazon product pages."""
 
+    async def _fetch_once(self, browser: object, url: str, proxy_url: str | None) -> ScrapedResult:
+        """One attempt: fresh stealthed context (with proxy) → navigate → extract."""
+        context = await _build_context(browser, proxy_url)
+        try:
+            page = await context.new_page()  # type: ignore[attr-defined]
+            await _apply_stealth(context, page)
+            return await _navigate_and_extract(page, url, self._compute_hash)
+        finally:
+            await _safe_close(context)
+
     async def fetch(self, url: str) -> ScrapedResult:
-        """Fetch *url* using a headless Chromium browser and extract price from ld+json."""
+        """Fetch *url* with a stealthed headless Chromium context and proxy rotation.
+
+        A fresh proxy is picked per call from ``settings.PROXY_URLS`` (empty ⇒
+        direct). On a detected block/CAPTCHA the fetch rotates to the next proxy up
+        to ``settings.MAX_PROXY_ROTATIONS`` times before resolving to BLOCKED/CAPTCHA.
+        """
         from playwright.async_api import TimeoutError as PlaywrightTimeoutError
         from playwright.async_api import async_playwright
 
-        context = None
+        rotator = ProxyRotator()
+        block_budget = settings.MAX_PROXY_ROTATIONS
         browser = None
 
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
-                context = await browser.new_context()
-                page = await context.new_page()
-                return await _navigate_and_extract(page, url, self._compute_hash)
+                while True:
+                    result = await self._fetch_once(browser, url, rotator.current())
+                    if result.extraction_status not in _BLOCK_STATUSES:
+                        return result
+                    if rotator.enabled and block_budget > 0:
+                        block_budget -= 1
+                        logger.info(
+                            "amazon_rotating_proxy_on_block",
+                            url=url,
+                            remaining_budget=block_budget,
+                        )
+                        rotator.next_proxy()
+                        continue
+                    logger.warning(
+                        "amazon_block_persisted",
+                        url=url,
+                        classification=result.extraction_status.value,
+                    )
+                    return result
 
         except Exception as exc:
-            from playwright.async_api import TimeoutError as PlaywrightTimeoutError  # noqa: F811
-
             if isinstance(exc, PlaywrightTimeoutError):
                 return ScrapedResult(
                     url=url,
@@ -251,13 +371,5 @@ class AmazonScraper(BaseScraper):
                 )
             raise ScraperError(f"Playwright error: {exc}") from exc
         finally:
-            if context is not None:
-                try:
-                    await context.close()
-                except Exception:
-                    pass
             if browser is not None:
-                try:
-                    await browser.close()
-                except Exception:
-                    pass
+                await _safe_close(browser)

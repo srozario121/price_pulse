@@ -131,6 +131,8 @@ Layered FastAPI application:
 - `base.py` — abstract `BaseScraper`; `http_client.py` — shared async httpx with retry/back-off
 - `generic.py` — CSS-selector-driven; `amazon.py` — Amazon-specific extraction
 - `registry.py` — maps `source_type` → scraper class
+- `anti_blocking.py` — shared UA/header pool, proxy rotation + normaliser, and the `classify_block` block/CAPTCHA classifier used by both fetch paths (Item 15)
+- **Extraction statuses** (`models/enums.py` `ExtractionStatus`): `ok`, `extraction_failed` (selector/parse failure), `http_error` (transient), `blocked` (429/503/IP-ban after proxy rotations exhausted), `captcha` (robot-check interstitial, often HTTP 200). The DB column is an open `String(20)` (no CHECK constraint — see migration 0006), so new statuses need no migration.
 
 **Models** (`models/`): SQLAlchemy ORM models only — no business logic.
 **Schemas** (`schemas/`): Pydantic v2 request/response schemas — separate from ORM models.
@@ -220,6 +222,8 @@ Copy `.env.example` to `.env`. Key variables:
 | `DEBUG` | `false` | Enable debug mode; also controls CORS and log format |
 | `CORS_ORIGINS` | `["*"]` when DEBUG=true, required otherwise | Allowed CORS origins (comma-separated) |
 | `SCRAPE_INTERVAL_MINUTES` | `30` | Default Celery Beat interval |
+| `PROXY_URLS` | `` (empty ⇒ disabled) | BYO rotating-proxy list, comma-separated (`scheme://[user:pass@]host[:port]`, schemes: http/https/socks5/socks5h/socks4). Per-request pick + rotate-on-block across both fetch paths |
+| `MAX_PROXY_ROTATIONS` | `2` | Max proxy rotations per fetch on a detected block before the scrape resolves to `blocked`/`captcha` |
 | `LOG_LEVEL` | `INFO` | structlog level |
 | `E2E_TEST_HOOKS` | `false` | Mounts gated `/api/v1/_test/` hooks; set true **only** by `docker-compose.e2e.yml` |
 | `VITE_API_URL` | `http://localhost:8000` | Frontend API base URL (Vite build-time var) |

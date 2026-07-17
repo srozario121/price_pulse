@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from app.schemas.product import ProductRead
+from app.schemas.product import FailingProductRead, ProductRead
 
 
 class PaginatedResponse[T](BaseModel):
@@ -25,6 +25,18 @@ class PaginatedResponse[T](BaseModel):
         if v > 100:
             raise ValueError("limit must not exceed 100")
         return v
+
+
+class FailingProductsResponse(PaginatedResponse[FailingProductRead]):
+    """``GET /products/failing`` envelope with anti-blocking aggregate counts.
+
+    Extends the standard pagination envelope with ``blocked_count`` /
+    ``captcha_count`` — totals across *all* flagged products (not just the current
+    page) — so a block/CAPTCHA spike is visible at a glance (Item 15).
+    """
+
+    blocked_count: int
+    captcha_count: int
 
 
 class ScrapeJobResponse(BaseModel):

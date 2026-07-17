@@ -22,6 +22,20 @@ from app.models.product import Product
 _OK = ExtractionStatus.OK.value
 
 
+def _failure_category(status: str) -> str:
+    """Group a failing status into 'blocked' / 'captcha' / 'other' (Item 15).
+
+    A block (429/503/IP-ban) and a CAPTCHA interstitial are anti-blocking signals
+    worth distinguishing from ordinary extraction/HTTP failures, so a block spike
+    is visible on ``GET /products/failing`` without a new route.
+    """
+    if status == ExtractionStatus.BLOCKED.value:
+        return "blocked"
+    if status == ExtractionStatus.CAPTCHA.value:
+        return "captcha"
+    return "other"
+
+
 @dataclass(frozen=True)
 class FailingProduct:
     """An active product whose latest scrapes have all failed extraction."""
@@ -30,6 +44,7 @@ class FailingProduct:
     latest_status: str
     latest_captured_at: datetime
     last_success_at: datetime | None
+    failure_category: str
 
 
 async def find_failing_products(
@@ -115,6 +130,7 @@ async def find_failing_products(
             latest_status=latest[p.id][0],
             latest_captured_at=latest[p.id][1],
             last_success_at=last_success.get(p.id),
+            failure_category=_failure_category(latest[p.id][0]),
         )
         for p in products
     ]

@@ -1300,6 +1300,18 @@ wheels = [
 ]
 
 [[package]]
+name = "playwright-stealth"
+version = "2.0.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "playwright" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a4/db/6ade5d539c7d151b9defc78fafa8b65aa52352617d0e7699b47008bd801f/playwright_stealth-2.0.3.tar.gz", hash = "sha256:1d8e488fbdd8f190f1269ea8cf5d57d14df3a9f1af1001c41ee3588b2aac3133", size = 25751, upload-time = "2026-04-04T02:50:33.88Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/10/607c409712c02a26c4cb794820514cb7fdaaeac15fb05bed917fb8a354b3/playwright_stealth-2.0.3-py3-none-any.whl", hash = "sha256:1887ade423ab7ff8ae16d363a30a38de0b5817e1e4a29d47b74bf3a0e3dbfcb4", size = 34385, upload-time = "2026-04-04T02:50:35.246Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1341,7 +1353,7 @@ dev = [{ name = "pre-commit", specifier = ">=3.7" }]
 
 [[package]]
 name = "price-pulse-backend"
-version = "0.1.3"
+version = "0.1.4"
 source = { virtual = "backend" }
 dependencies = [
     { name = "alembic" },
@@ -1353,6 +1365,7 @@ dependencies = [
     { name = "httpx" },
     { name = "parsel" },
     { name = "playwright" },
+    { name = "playwright-stealth" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
@@ -1389,6 +1402,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "parsel", specifier = ">=1.9" },
     { name = "playwright", specifier = ">=1.44" },
+    { name = "playwright-stealth", specifier = ">=2.0.0" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "python-multipart", specifier = ">=0.0.31" },

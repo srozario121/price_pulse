@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.product import Product
-from app.schemas.common import PaginatedResponse
+from app.schemas.common import FailingProductsResponse, PaginatedResponse
 from app.schemas.product import (
     FailingProductRead,
     ProductCreate,
@@ -153,7 +153,7 @@ async def list_products(
 
 @router.get(
     "/failing",
-    response_model=PaginatedResponse[FailingProductRead],
+    response_model=FailingProductsResponse,
     summary="List products whose latest scrapes have all failed",
 )
 async def list_failing_products(
@@ -166,16 +166,18 @@ async def list_failing_products(
     limit: int = Query(50, ge=1, le=100, description="Max items per page (≤ 100)"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     db: AsyncSession = Depends(get_db),
-) -> PaginatedResponse[FailingProductRead]:
+) -> FailingProductsResponse:
     """Surface active products whose crawls are quietly failing.
 
-    A crawl that returns `extraction_failed`/`http_error` is recorded as a
-    successful task, so a persistently-broken scraper never raises. This lists
-    active products whose most recent `min_failures` records are all non-`ok`.
+    A crawl that returns `extraction_failed`/`http_error`/`blocked`/`captcha` is
+    recorded as a successful task, so a persistently-broken scraper never raises.
+    This lists active products whose most recent `min_failures` records are all
+    non-`ok`.
 
     Paginated: `total` is the full count of flagging products; `items` is the
     requested `limit`/`offset` slice. `limit` is bounded to ≤ 100 so the response
-    envelope stays valid however many products are failing at once.
+    envelope stays valid however many products are failing at once. `blocked_count`
+    / `captcha_count` are anti-blocking aggregates across all flagged products.
     """
     failing = await monitoring_service.find_failing_products(db, min_failures=min_failures)
     page = failing[offset : offset + limit]
@@ -185,10 +187,20 @@ async def list_failing_products(
             latest_status=f.latest_status,
             latest_captured_at=f.latest_captured_at,
             last_success_at=f.last_success_at,
+            failure_category=f.failure_category,
         )
         for f in page
     ]
-    return PaginatedResponse(items=items, total=len(failing), limit=limit, offset=offset)
+    blocked_count = sum(1 for f in failing if f.failure_category == "blocked")
+    captcha_count = sum(1 for f in failing if f.failure_category == "captcha")
+    return FailingProductsResponse(
+        items=items,
+        total=len(failing),
+        limit=limit,
+        offset=offset,
+        blocked_count=blocked_count,
+        captcha_count=captcha_count,
+    )
 
 
 @router.get(
