@@ -66,9 +66,7 @@ def upgrade() -> None:
         sa.column("queue", sa.String),
     )
     bind = op.get_bind()
-    existing = set(
-        bind.execute(sa.select(preset_table.c.source_type)).scalars().all()
-    )
+    existing = set(bind.execute(sa.select(preset_table.c.source_type)).scalars().all())
     rows = [row for row in BUILTIN_SOURCE_PRESETS if row["source_type"] not in existing]
     if rows:
         op.bulk_insert(preset_table, rows)

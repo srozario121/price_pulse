@@ -66,11 +66,22 @@ eslint_max_warnings = 0
 # /api/v1/sources endpoint — but necessarily re-renders the dialog, re-covering the
 # shared ProductFormDialog render lines the existing dialog tests already exercise
 # (unit tier). Captured on Node 20 (CI runtime).
-baseline_backend_duplicate_lines = 941
+#
+# Re-baselined 2026-07-17 backend (941 -> 1096): Item 18 configurable sources. The new
+# scraper suites (test_item18_scrapers) each assert a *distinct* behaviour — ld+json
+# extraction, DOM fallback, timeout, block/login-wall classification — but re-run the
+# shared PlaywrightScraper base fetch/_navigate/_extract paths; the preset suites
+# (test_source_presets, test_source_presets_integration) re-cover the shared
+# source_preset_service + registry resolution lines, and the parametrised product-create
+# integration test re-covers the create_product route across four source types (the same
+# "endpoint needs a live DB, each scenario re-runs the route" case already re-baselined
+# for /products/failing). Captured on the CI runtime — Python 3.12 (this count is highly
+# runtime-sensitive; local runs on other Python versions report a different absolute).
+baseline_backend_duplicate_lines = 1096
 baseline_frontend_duplicate_lines = 1143
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
-max_intra_tier_duplicate_lines_backend = 941
+max_intra_tier_duplicate_lines_backend = 1096
 max_intra_tier_duplicate_lines_frontend = 1143
