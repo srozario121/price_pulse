@@ -679,7 +679,7 @@ Arrange-Assert-Act for all backend tests.
 
 ---
 
-## 18. Configurable Monitoring Sources — eBay, Currys, John Lewis & Facebook Marketplace Presets (UK)
+## 18. Configurable Monitoring Sources — eBay, Currys, John Lewis & Facebook Marketplace Presets (UK) ✅ COMPLETE
 
 Price Pulse can only monitor two source types today: `amazon` (Playwright path) and
 `generic` (CSS-selector path). The scraping layer already hints at more — the
@@ -723,13 +723,13 @@ Interplays with Item 16 (`selector_miss`) and Item 17 (`ScrapeJob`) on the share
 
 ### Implementation workflow (mandatory — complete in order)
 
-1. [ ] Create an isolated git worktree before writing any code:
+1. [x] Create an isolated git worktree before writing any code:
        `git worktree add ../pp-item-18 -b feat/item-18`
-2. [ ] Implement every task below inside that worktree — never directly on `main`.
-3. [ ] All quality gates must pass before opening a PR:
+2. [x] Implement every task below inside that worktree — never directly on `main`.
+3. [x] All quality gates must pass before opening a PR:
        `make test` exits 0 and `make quality` exits 0
        (see `CONTRIBUTING.md` → Pull Request Checklist).
-4. [ ] Raise a Pull Request: `gh pr create`
+4. [x] Raise a Pull Request: `gh pr create` — merged as PR #8 (squash `5e6bd9f`).
        **No direct commits to the default branch (`main`) are permitted.**
 
 ### Design decisions (resolved)
