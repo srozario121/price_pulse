@@ -263,6 +263,17 @@ async def update_product(
     await db.flush()
     await db.refresh(product)
 
+    # Re-sync the per-product schedule when a change affects routing/activity: a
+    # new source_type may map to a different Celery queue (e.g. generic→amazon
+    # moves it to the playwright worker), and toggling is_active must add/remove
+    # the schedule. Best-effort — never fail the update on a RedBeat error.
+    if "source_type" in update_data or "is_active" in update_data:
+        if product.is_active:
+            queue = await queue_for_source_type(str(product.source_type), db)
+            _register_schedule_best_effort(product_id, queue)
+        else:
+            _deregister_schedule_best_effort(product_id)
+
     logger.info("product_updated", product_id=product_id, fields=list(update_data))
     return product
 

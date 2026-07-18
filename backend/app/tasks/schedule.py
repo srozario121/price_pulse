@@ -25,7 +25,7 @@ import structlog
 from celery.signals import worker_ready
 from redbeat import RedBeatSchedulerEntry
 
-from app.scrapers.registry import DEFAULT_QUEUE, queue_for_source_type
+from app.scrapers.registry import DEFAULT_QUEUE
 from app.workers.celery_app import celery_app
 
 logger = structlog.get_logger()
@@ -100,16 +100,24 @@ async def _sync_schedules_async() -> None:
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal
     from app.models.product import Product
+    from app.services import source_preset_service
 
     async with AsyncSessionLocal() as session:
         stmt = select(Product).where(Product.is_active.is_(True))
         result = await session.execute(stmt)
         products = result.scalars().all()
 
-        # Resolve each product's queue from the DB-backed preset registry while the
-        # session is open (queue_for_source_type is async and DB-backed).
+        # Resolve queues from a single fetch of the enabled presets (not one query
+        # per product) — this runs for every active product at worker startup.
+        queue_by_source_type = {
+            preset.source_type: preset.queue
+            for preset in await source_preset_service.list_enabled_presets(session)
+        }
         schedule_specs = [
-            (product.id, await queue_for_source_type(str(product.source_type), session))
+            (
+                product.id,
+                queue_by_source_type.get(str(product.source_type), DEFAULT_QUEUE),
+            )
             for product in products
         ]
 

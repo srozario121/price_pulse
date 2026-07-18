@@ -116,3 +116,56 @@ async def test_get_scraper_resolves_all_seeded_sources(pg_session):
     for source_type, cls in expected.items():
         scraper = await get_scraper(source_type, pg_session)
         assert isinstance(scraper, cls)
+
+
+# ── schedule re-sync on update (routing/activity changes) ─────────────────────
+@pytest.mark.asyncio
+async def test_update_source_type_reregisters_schedule_on_new_queue(pg_async_client, monkeypatch):
+    # Changing generic (default queue) → amazon (playwright queue) must re-register
+    # the RedBeat schedule on the new queue, else the scheduled scrape lands on the
+    # browserless worker and fails.
+    import app.tasks.schedule as sched
+
+    calls: list[tuple[int, str]] = []
+    monkeypatch.setattr(
+        sched, "register_product_schedule", lambda pid, interval, queue: calls.append((pid, queue))
+    )
+
+    created = await pg_async_client.post(
+        "/api/v1/products",
+        json={
+            "name": "P",
+            "url": "https://example.com/resync",
+            "source_type": "generic",
+            "css_selector": ".p",
+        },
+    )
+    pid = created.json()["id"]
+    calls.clear()
+
+    resp = await pg_async_client.patch(f"/api/v1/products/{pid}", json={"source_type": "amazon"})
+    assert resp.status_code == 200, resp.text
+    assert calls and calls[-1] == (pid, "playwright")
+
+
+@pytest.mark.asyncio
+async def test_deactivating_product_deregisters_schedule(pg_async_client, monkeypatch):
+    import app.tasks.schedule as sched
+
+    removed: list[int] = []
+    monkeypatch.setattr(sched, "deregister_product_schedule", lambda pid: removed.append(pid))
+
+    created = await pg_async_client.post(
+        "/api/v1/products",
+        json={
+            "name": "P",
+            "url": "https://example.com/deact",
+            "source_type": "generic",
+            "css_selector": ".p",
+        },
+    )
+    pid = created.json()["id"]
+
+    resp = await pg_async_client.patch(f"/api/v1/products/{pid}", json={"is_active": False})
+    assert resp.status_code == 200, resp.text
+    assert pid in removed

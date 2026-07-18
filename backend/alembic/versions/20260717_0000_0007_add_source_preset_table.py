@@ -19,12 +19,59 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
-from app.services.source_preset_service import BUILTIN_SOURCE_PRESETS
 
 revision: str = "0007"
 down_revision: str | None = "0006"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# Frozen seed snapshot — intentionally inlined (NOT imported from app code) so this
+# historical migration replays identically regardless of later edits to the app's
+# BUILTIN_SOURCE_PRESETS. queue: browser scrapers → "playwright", httpx → "default".
+_SEED: list[dict[str, object]] = [
+    {
+        "source_type": "generic",
+        "label": "Generic (CSS selector)",
+        "host_patterns": [],
+        "strategy": "generic",
+        "queue": "default",
+    },
+    {
+        "source_type": "amazon",
+        "label": "Amazon",
+        "host_patterns": ["amazon.co.uk", "amazon.com"],
+        "strategy": "amazon",
+        "queue": "playwright",
+    },
+    {
+        "source_type": "ebay",
+        "label": "eBay UK",
+        "host_patterns": ["ebay.co.uk"],
+        "strategy": "ebay",
+        "queue": "default",
+    },
+    {
+        "source_type": "currys",
+        "label": "Currys",
+        "host_patterns": ["currys.co.uk"],
+        "strategy": "currys",
+        "queue": "playwright",
+    },
+    {
+        "source_type": "john_lewis",
+        "label": "John Lewis",
+        "host_patterns": ["johnlewis.com"],
+        "strategy": "john_lewis",
+        "queue": "playwright",
+    },
+    {
+        "source_type": "facebook_marketplace",
+        "label": "Facebook Marketplace",
+        "host_patterns": ["facebook.com"],
+        "strategy": "facebook_marketplace",
+        "queue": "playwright",
+    },
+]
 
 
 def upgrade() -> None:
@@ -67,7 +114,7 @@ def upgrade() -> None:
     )
     bind = op.get_bind()
     existing = set(bind.execute(sa.select(preset_table.c.source_type)).scalars().all())
-    rows = [row for row in BUILTIN_SOURCE_PRESETS if row["source_type"] not in existing]
+    rows = [row for row in _SEED if row["source_type"] not in existing]
     if rows:
         op.bulk_insert(preset_table, rows)
 
