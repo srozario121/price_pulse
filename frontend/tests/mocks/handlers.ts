@@ -5,6 +5,7 @@ import type {
   AlertRead,
   PaginatedResponse,
   ScrapeJobResponse,
+  SourcePreset,
 } from '../../src/api/types';
 
 const mockProduct: ProductRead = {
@@ -13,6 +14,7 @@ const mockProduct: ProductRead = {
   url: 'https://example.com/headphones',
   source_type: 'generic',
   css_selector: '.price',
+  css_selector_currency: null,
   is_active: true,
   created_at: '2026-05-01T10:00:00Z',
   updated_at: '2026-05-01T10:00:00Z',
@@ -24,6 +26,7 @@ const mockProduct2: ProductRead = {
   url: 'https://example.com/keyboard',
   source_type: 'amazon',
   css_selector: null,
+  css_selector_currency: null,
   is_active: true,
   created_at: '2026-05-02T10:00:00Z',
   updated_at: '2026-05-02T10:00:00Z',
@@ -35,10 +38,24 @@ const mockProduct3: ProductRead = {
   url: 'https://example.com/hub',
   source_type: 'generic',
   css_selector: '.price',
+  css_selector_currency: null,
   is_active: false,
   created_at: '2026-05-03T10:00:00Z',
   updated_at: '2026-05-03T10:00:00Z',
 };
+
+const mockSources: SourcePreset[] = [
+  { key: 'generic', label: 'Generic (CSS selector)', queue: 'default' },
+  { key: 'amazon', label: 'Amazon', queue: 'playwright' },
+  { key: 'ebay', label: 'eBay UK', queue: 'default' },
+  { key: 'currys', label: 'Currys', queue: 'playwright' },
+  { key: 'john_lewis', label: 'John Lewis', queue: 'playwright' },
+  {
+    key: 'facebook_marketplace',
+    label: 'Facebook Marketplace',
+    queue: 'playwright',
+  },
+];
 
 const mockPrices: PriceRecordRead[] = Array.from({ length: 5 }, (_, i) => ({
   id: i + 1,
@@ -75,6 +92,11 @@ const mockAlert2: AlertRead = {
 };
 
 export const handlers = [
+  // Sources
+  http.get('/api/v1/sources', () => {
+    return HttpResponse.json(mockSources);
+  }),
+
   // Products
   http.get('/api/v1/products', () => {
     const response: PaginatedResponse<ProductRead> = {

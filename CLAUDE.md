@@ -130,7 +130,8 @@ Layered FastAPI application:
 **Scraping layer** (`scrapers/`): pluggable adapters per retail source type.
 - `base.py` — abstract `BaseScraper`; `http_client.py` — shared async httpx with retry/back-off
 - `generic.py` — CSS-selector-driven; `amazon.py` — Amazon-specific extraction
-- `registry.py` — maps `source_type` → scraper class
+- `ebay.py` — eBay UK (httpx + `ld+json`); `currys.py`, `john_lewis.py`, `facebook_marketplace.py` — Playwright, on the shared `playwright_base.py` `PlaywrightScraper` base (`ld+json`-first + CSS-selector DOM fallback); Facebook Marketplace classifies its login wall / bot-check as `blocked`/`captcha` (Item 18)
+- `registry.py` — **data-driven**: `get_scraper` / `queue_for_source_type` are async and resolve the scraper class (via a `strategy` → class map) and Celery queue from the DB-backed `SourcePreset` registry (Item 18). A `source_type` is valid iff an enabled `SourcePreset` row exists; it is validated at the API boundary (unknown/disabled → 422). Onboarding a UK retailer is a data change (`SourcePreset` row) not an enum/migration change. `GET /api/v1/sources` exposes the enabled presets.
 - `anti_blocking.py` — shared UA/header pool, proxy rotation + normaliser, and the `classify_block` block/CAPTCHA classifier used by both fetch paths (Item 15)
 - **Extraction statuses** (`models/enums.py` `ExtractionStatus`): `ok`, `extraction_failed` (selector/parse failure), `http_error` (transient), `blocked` (429/503/IP-ban after proxy rotations exhausted), `captcha` (robot-check interstitial, often HTTP 200). The DB column is an open `String(20)` (no CHECK constraint — see migration 0006), so new statuses need no migration.
 

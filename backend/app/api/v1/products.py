@@ -27,7 +27,8 @@ from app.schemas.product import (
     ProductRead,
     ProductUpdate,
 )
-from app.services import monitoring_service
+from app.scrapers.registry import queue_for_source_type
+from app.services import monitoring_service, source_preset_service
 
 logger = structlog.get_logger(__name__)
 
@@ -37,26 +38,41 @@ router = APIRouter(prefix="/products", tags=["products"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _register_schedule_best_effort(product_id: int, source_type: str) -> None:
+def _register_schedule_best_effort(product_id: int, queue: str) -> None:
     """Register the per-product scrape schedule; never fail the request on error.
 
     Scheduling is a background concern — a transient Redis/RedBeat issue must not
     500 the user-facing create. On failure the worker's ``startup_sync_schedules``
     reconciles all active products at its next start, so this is a best-effort
-    fast path, not the sole guarantee.
+    fast path, not the sole guarantee. *queue* is resolved from the source's
+    preset by the caller (``queue_for_source_type``).
     """
-    from app.scrapers.registry import queue_for_source_type
     from app.tasks.schedule import register_product_schedule
 
     try:
         register_product_schedule(
             product_id,
             settings.SCRAPE_INTERVAL_MINUTES,
-            queue=queue_for_source_type(source_type),
+            queue=queue,
         )
     except Exception as exc:  # noqa: BLE001 — best-effort; log and continue
         logger.warning(
             "product_schedule_registration_failed", product_id=product_id, error=str(exc)
+        )
+
+
+async def _assert_source_type_valid(source_type: str, db: AsyncSession) -> None:
+    """Raise HTTP 422 if *source_type* is not a known, enabled preset key.
+
+    The DB-backed ``SourcePreset`` registry is the single source of truth for
+    valid source types (Item 18), so this replaces the old native-enum check and
+    fixes the ``ebay``/``currys`` "accepted at create, ``UnknownSourceError`` at
+    scrape time" trap.
+    """
+    if not await source_preset_service.is_valid_source_type(db, source_type):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown or disabled source_type: {source_type!r}",
         )
 
 
@@ -110,13 +126,15 @@ async def create_product(
     db: AsyncSession = Depends(get_db),
 ) -> Product:
     await _assert_url_unique(body.url, db)
+    await _assert_source_type_valid(body.source_type, db)
 
     product = Product(**body.model_dump())
     db.add(product)
     await db.flush()
     await db.refresh(product)
 
-    _register_schedule_best_effort(product.id, str(product.source_type))
+    queue = await queue_for_source_type(str(product.source_type), db)
+    _register_schedule_best_effort(product.id, queue)
 
     logger.info("product_created", product_id=product.id, url=product.url)
     return product
@@ -234,11 +252,27 @@ async def update_product(
     if new_url is not None and new_url != product.url:
         await _assert_url_unique(new_url, db, exclude_id=product_id)
 
+    # Validate a changed source_type against the enabled preset registry (422)
+    new_source_type = update_data.get("source_type")
+    if new_source_type is not None:
+        await _assert_source_type_valid(new_source_type, db)
+
     for field, value in update_data.items():
         setattr(product, field, value)
 
     await db.flush()
     await db.refresh(product)
+
+    # Re-sync the per-product schedule when a change affects routing/activity: a
+    # new source_type may map to a different Celery queue (e.g. generic→amazon
+    # moves it to the playwright worker), and toggling is_active must add/remove
+    # the schedule. Best-effort — never fail the update on a RedBeat error.
+    if "source_type" in update_data or "is_active" in update_data:
+        if product.is_active:
+            queue = await queue_for_source_type(str(product.source_type), db)
+            _register_schedule_best_effort(product_id, queue)
+        else:
+            _deregister_schedule_best_effort(product_id)
 
     logger.info("product_updated", product_id=product_id, fields=list(update_data))
     return product

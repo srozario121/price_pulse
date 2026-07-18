@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Configurable monitoring sources — Item 18)
+
+- **DB-backed `SourcePreset` registry** (`app/models/source_preset.py`, `app/services/source_preset_service.py`, Alembic migration `0007`): a runtime-editable table mapping a `source_type` key to its extraction `strategy`, Celery `queue`, label, host patterns and default selectors. Seeded (idempotently) with six built-ins — `generic`, `amazon`, `ebay`, `currys`, `john_lewis`, `facebook_marketplace`. Replaces the two divergent hardcoded `SourceType` enums; onboarding a UK retailer is now a data change.
+- **Four new UK source scrapers**: **eBay UK** (`scrapers/ebay.py`, httpx + `ld+json`/structured-data with a meta/DOM fallback, `default` queue); **Currys** and **John Lewis** (`scrapers/currys.py`, `scrapers/john_lewis.py`, Playwright React/SPA, `playwright` queue); **Facebook Marketplace** (`scrapers/facebook_marketplace.py`, Playwright, built on Item 15's anti-blocking module — its login wall / bot-check classifies as `blocked`/`captcha`, never `extraction_failed`). This also makes the previously-advertised-but-broken `ebay`/`currys` source types actually work.
+- **Shared `PlaywrightScraper` base** (`scrapers/playwright_base.py`): stealthed context, per-request proxy rotation with bounded rotate-on-block retry, block classification before extraction, and `ld+json`-first price extraction with a configurable CSS-selector DOM fallback — consumed by the three new browser scrapers.
+- **`GET /api/v1/sources`** (`api/v1/sources.py`, `schemas/source_preset.py`): returns the enabled presets (`key`, `label`, `queue`) so the frontend "add product" form is populated from the backend registry. Frontend source dropdown, `useSources` hook, and MSW handler wired to it.
+- **`css_selector_currency` on the product API**: the field existed on the model but was unreachable via `ProductBase`/`ProductCreate`/`ProductUpdate` — now exposed so a generic-source product can override its currency selector.
+- **Deep-research catalogue** (`docs/research/uk-ecommerce-sources.md`): major UK e-commerce retailers assessed as candidate future presets, with a prioritised shortlist (research/documentation only — not a commitment to scrape).
+
+### Changed (Configurable monitoring sources — Item 18)
+
+- **`product.source_type` migrated from a native Postgres enum to a validated string column** (Alembic migration `0008`): the `source_type_enum` type is dropped (existing values preserved via `USING source_type::text`), so adding a source no longer needs an `ALTER TYPE` migration. `source_type` is validated at the API boundary against the enabled preset registry — an unknown or disabled key returns **422** (closing the old "accepted at create, `UnknownSourceError` at scrape" trap).
+- **Scraper resolution and queue routing are now data-driven** (`scrapers/registry.py`): `get_scraper` and `queue_for_source_type` are `async` and resolve the scraper class (via a `strategy` → class map) and Celery queue from the `SourcePreset` registry, replacing the hardcoded `_REGISTRY`/`_PLAYWRIGHT_SOURCE_TYPES` frozenset and the local `SourceType` enum.
+
 ### Added (Anti-blocking — Item 15)
 
 - **Rotating-proxy fetch hardening** (`app/scrapers/anti_blocking.py`): a shared anti-blocking module used by **both** fetch paths (httpx `http_client` and Playwright `amazon`) — a consolidated User-Agent pool with a matched header set (`Accept-Language` + `Sec-CH-UA*` client hints that agree with the chosen UA, omitted for Firefox/Safari), a `ProxyRotator` (per-request proxy pick + `next_proxy()` rotation over the BYO list), and a proxy normaliser producing both the httpx URL string and the Playwright `proxy` dict.

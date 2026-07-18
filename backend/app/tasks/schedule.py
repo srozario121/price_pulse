@@ -25,7 +25,7 @@ import structlog
 from celery.signals import worker_ready
 from redbeat import RedBeatSchedulerEntry
 
-from app.scrapers.registry import DEFAULT_QUEUE, queue_for_source_type
+from app.scrapers.registry import DEFAULT_QUEUE
 from app.workers.celery_app import celery_app
 
 logger = structlog.get_logger()
@@ -100,20 +100,35 @@ async def _sync_schedules_async() -> None:
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal
     from app.models.product import Product
+    from app.services import source_preset_service
 
     async with AsyncSessionLocal() as session:
         stmt = select(Product).where(Product.is_active.is_(True))
         result = await session.execute(stmt)
         products = result.scalars().all()
 
-    for product in products:
+        # Resolve queues from a single fetch of the enabled presets (not one query
+        # per product) — this runs for every active product at worker startup.
+        queue_by_source_type = {
+            preset.source_type: preset.queue
+            for preset in await source_preset_service.list_enabled_presets(session)
+        }
+        schedule_specs = [
+            (
+                product.id,
+                queue_by_source_type.get(str(product.source_type), DEFAULT_QUEUE),
+            )
+            for product in products
+        ]
+
+    for product_id, queue in schedule_specs:
         register_product_schedule(
-            product.id,
+            product_id,
             settings.SCRAPE_INTERVAL_MINUTES,
-            queue=queue_for_source_type(str(product.source_type)),
+            queue=queue,
         )
 
-    logger.info("startup_schedules_synced", product_count=len(products))
+    logger.info("startup_schedules_synced", product_count=len(schedule_specs))
 
 
 def startup_sync_schedules() -> None:

@@ -10,7 +10,6 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.alert import AlertDirection
-from app.models.product import SourceType
 from app.schemas.alert import AlertUpdate
 from app.schemas.common import PaginatedResponse, ScrapeJobResponse
 from app.schemas.price import PriceRecordRead
@@ -58,7 +57,7 @@ class TestScrapeJobResponse:
             id=1,
             name="Test Product",
             url="https://example.com/product",
-            source_type=SourceType.generic,
+            source_type="generic",
             css_selector=None,
             is_active=True,
             created_at=datetime(2026, 1, 1, 12, 0, 0),

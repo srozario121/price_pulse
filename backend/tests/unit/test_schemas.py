@@ -7,7 +7,6 @@ from pydantic import ValidationError
 
 from app.models.alert import AlertDirection
 from app.models.notification_log import NotificationChannel, NotificationStatus
-from app.models.product import SourceType
 from app.schemas.alert import AlertCreate, AlertRead, AlertUpdate
 from app.schemas.notification import NotificationLogRead
 from app.schemas.price import PriceRecordCreate, PriceRecordRead
@@ -30,7 +29,7 @@ class TestProductSchema:
         schema = ProductCreate(**data)
         # Assert
         assert schema.name == "Test Product"
-        assert schema.source_type == SourceType.amazon
+        assert schema.source_type == "amazon"
         assert schema.css_selector is None
         assert schema.is_active is True
 
@@ -40,7 +39,7 @@ class TestProductSchema:
             id=1,
             name="Widget",
             url="https://example.com/widget",
-            source_type=SourceType.generic,
+            source_type="generic",
             css_selector=".price",
             is_active=True,
             created_at="2026-01-01T00:00:00Z",
@@ -67,14 +66,17 @@ class TestProductSchema:
         assert update.name == "New Name"
         assert update.url is None
 
-    def test_product_invalid_source_type_rejected(self):
-        # Arrange / Act / Assert
-        with pytest.raises(ValidationError):
-            ProductCreate(
-                name="Bad",
-                url="https://example.com",
-                source_type="nonexistent_source",
-            )
+    def test_product_schema_accepts_any_source_type_string(self):
+        # source_type is now a plain string at the schema layer (Item 18) —
+        # validity is enforced at the API boundary against the enabled preset
+        # registry (422), not by Pydantic. So the schema itself accepts any
+        # non-empty string; see test_products_api for the 422 enforcement.
+        schema = ProductCreate(
+            name="Bad",
+            url="https://example.com",
+            source_type="nonexistent_source",
+        )
+        assert schema.source_type == "nonexistent_source"
 
 
 # ── AlertCreate / AlertRead / AlertUpdate ─────────────────────────────────────

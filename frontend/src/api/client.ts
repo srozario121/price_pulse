@@ -9,6 +9,7 @@ import type {
   AlertUpdate,
   PaginatedResponse,
   ScrapeJobResponse,
+  SourcePreset,
 } from './types';
 
 const instance: AxiosInstance = axios.create({
@@ -50,6 +51,11 @@ export const productsApi = {
     instance
       .post<ScrapeJobResponse>(`/api/v1/products/${id}/scrape`)
       .then((r) => r.data),
+};
+
+export const sourcesApi = {
+  list: () =>
+    instance.get<SourcePreset[]>('/api/v1/sources').then((r) => r.data),
 };
 
 export const pricesApi = {

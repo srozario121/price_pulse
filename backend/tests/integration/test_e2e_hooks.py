@@ -38,6 +38,19 @@ class _FakeScraper:
         return self._result
 
 
+def _stub_get_scraper(result: ScrapedResult):
+    """Build an async ``get_scraper`` replacement returning a canned fake scraper.
+
+    ``get_scraper`` is now an async, DB-backed coroutine (Item 18), so the hook's
+    ``await get_scraper(...)`` needs an awaitable stub.
+    """
+
+    async def _get(*_args: object, **_kwargs: object) -> _FakeScraper:
+        return _FakeScraper(result)
+
+    return _get
+
+
 def _ok_result(url: str, price: str) -> ScrapedResult:
     return ScrapedResult(
         url=url,
@@ -117,7 +130,7 @@ async def test_scrape_sync_records_price_and_triggers_alert(hooks_client, monkey
 
     monkeypatch.setattr(
         "app.api.v1._test_hooks.get_scraper",
-        lambda *a, **k: _FakeScraper(_ok_result("http://fixture/p1", "50.00")),
+        _stub_get_scraper(_ok_result("http://fixture/p1", "50.00")),
     )
     dispatched: list[int] = []
     monkeypatch.setattr(
@@ -152,7 +165,7 @@ async def test_reset_cooldown_clears_notified_at(hooks_client, monkeypatch) -> N
     alert_id = await _create_alert(hooks_client, product_id, threshold="100.00")
     monkeypatch.setattr(
         "app.api.v1._test_hooks.get_scraper",
-        lambda *a, **k: _FakeScraper(_ok_result("http://fixture/p2", "50.00")),
+        _stub_get_scraper(_ok_result("http://fixture/p2", "50.00")),
     )
     monkeypatch.setattr("app.services.notifications.notify_alert", lambda aid: None)
     await hooks_client.post(f"/api/v1/_test/products/{product_id}/scrape-sync")

@@ -1,9 +1,16 @@
 // Run make generate-types to replace with generated types after item 6 is complete
 
-export type SourceType = 'generic' | 'amazon' | 'ebay' | 'currys';
+// source_type is now registry-driven (validated server-side); no longer a fixed union.
+export type SourceType = string;
 export type AlertDirection = 'above' | 'below';
 export type NotificationChannel = 'email' | 'webhook' | 'whatsapp';
 export type ExtractionStatus = 'ok' | 'extraction_failed' | 'http_error';
+
+export interface SourcePreset {
+  key: string;
+  label: string;
+  queue: string;
+}
 
 export interface ProductRead {
   id: number;
@@ -11,6 +18,7 @@ export interface ProductRead {
   url: string;
   source_type: SourceType;
   css_selector: string | null;
+  css_selector_currency: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -21,6 +29,7 @@ export interface ProductCreate {
   url: string;
   source_type: SourceType;
   css_selector?: string | null;
+  css_selector_currency?: string | null;
   is_active?: boolean;
 }
 
@@ -29,6 +38,7 @@ export interface ProductUpdate {
   url?: string;
   source_type?: SourceType;
   css_selector?: string | null;
+  css_selector_currency?: string | null;
   is_active?: boolean;
 }
 

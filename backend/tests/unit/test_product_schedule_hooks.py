@@ -16,18 +16,19 @@ from app.core.config import settings
 def test_register_best_effort_calls_register_with_configured_interval() -> None:
     # Arrange — the handler imports register_product_schedule lazily from app.tasks.schedule
     with patch("app.tasks.schedule.register_product_schedule") as reg:
-        # Act — a generic product routes to the default queue
-        products_api._register_schedule_best_effort(42, "generic")
+        # Act — the caller resolves the queue (queue_for_source_type) and passes it in
+        products_api._register_schedule_best_effort(42, "default")
     # Assert
     reg.assert_called_once_with(42, settings.SCRAPE_INTERVAL_MINUTES, queue="default")
 
 
-def test_register_best_effort_routes_amazon_to_playwright_queue() -> None:
-    # Regression guard: Amazon products must be scheduled onto the 'playwright'
-    # queue so the browser-capable worker runs them.
+def test_register_best_effort_passes_resolved_queue_through() -> None:
+    # Regression guard: the browser-required 'playwright' queue (resolved from the
+    # source's preset by queue_for_source_type — Item 18) is passed straight to
+    # RedBeat so the browser-capable worker runs those scrapes.
     with patch("app.tasks.schedule.register_product_schedule") as reg:
         # Act
-        products_api._register_schedule_best_effort(42, "amazon")
+        products_api._register_schedule_best_effort(42, "playwright")
     # Assert
     reg.assert_called_once_with(42, settings.SCRAPE_INTERVAL_MINUTES, queue="playwright")
 
@@ -38,7 +39,7 @@ def test_register_best_effort_swallows_errors() -> None:
         "app.tasks.schedule.register_product_schedule", side_effect=RuntimeError("redis down")
     ):
         # Act / Assert — must not raise
-        products_api._register_schedule_best_effort(7, "generic")
+        products_api._register_schedule_best_effort(7, "default")
 
 
 def test_deregister_best_effort_calls_deregister() -> None:

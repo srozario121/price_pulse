@@ -4,14 +4,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.product import SourceType
-
 
 class ProductBase(BaseModel):
     name: str
     url: str
-    source_type: SourceType
+    # Validated at the API boundary against the enabled SourcePreset registry
+    # (unknown/disabled → 422); no longer a native enum (Item 18).
+    source_type: str
     css_selector: str | None = None
+    css_selector_currency: str | None = None
     is_active: bool = True
 
 
@@ -30,8 +31,9 @@ class ProductRead(ProductBase):
 class ProductUpdate(BaseModel):
     name: str | None = None
     url: str | None = None
-    source_type: SourceType | None = None
+    source_type: str | None = None
     css_selector: str | None = None
+    css_selector_currency: str | None = None
     is_active: bool | None = None
 
 

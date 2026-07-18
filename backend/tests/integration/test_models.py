@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.alert import AlertDirection, PriceAlert
 from app.models.notification_log import NotificationChannel, NotificationLog, NotificationStatus
 from app.models.price_history import PriceRecord
-from app.models.product import Product, SourceType
+from app.models.product import Product
 
 pytestmark = pytest.mark.integration
 
@@ -32,7 +32,7 @@ async def _make_product(session: AsyncSession, **kwargs) -> Product:
     defaults = {
         "name": "Test Product",
         "url": "https://example.com/product",
-        "source_type": SourceType.generic,
+        "source_type": "generic",
     }
     defaults.update(kwargs)
     product = Product(**defaults)
@@ -51,7 +51,7 @@ class TestCRUD:
             pg_session,
             name="Widget",
             url="https://amazon.com/widget",
-            source_type=SourceType.amazon,
+            source_type="amazon",
             css_selector=".price",
         )
 
@@ -61,7 +61,7 @@ class TestCRUD:
         # Assert
         assert product.id is not None
         assert product.name == "Widget"
-        assert product.source_type == SourceType.amazon
+        assert product.source_type == "amazon"
         assert product.css_selector == ".price"
         assert product.is_active is True
         assert product.created_at is not None
@@ -267,8 +267,8 @@ class TestConstraintViolations:
     async def test_duplicate_product_url_raises_integrity_error(self, pg_session: AsyncSession):
         # Arrange
         url = "https://example.com/duplicate"
-        p1 = Product(name="P1", url=url, source_type=SourceType.generic)
-        p2 = Product(name="P2", url=url, source_type=SourceType.generic)
+        p1 = Product(name="P1", url=url, source_type="generic")
+        p2 = Product(name="P2", url=url, source_type="generic")
         pg_session.add_all([p1, p2])
 
         # Act / Assert
