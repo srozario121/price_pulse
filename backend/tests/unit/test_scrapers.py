@@ -364,39 +364,52 @@ async def test_amazon_scraper_timeout() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Registry
+# Registry (data-driven, resolved from the seeded SourcePreset table — Item 18)
 # ---------------------------------------------------------------------------
 
 
-def test_get_scraper_generic() -> None:
-    scraper = get_scraper("generic")
+@pytest.mark.asyncio
+async def test_get_scraper_generic(db_session) -> None:
+    scraper = await get_scraper("generic", db_session)
     assert isinstance(scraper, GenericScraper)
 
 
-def test_get_scraper_amazon() -> None:
+@pytest.mark.asyncio
+async def test_get_scraper_amazon(db_session) -> None:
     from app.scrapers.amazon import AmazonScraper
 
-    scraper = get_scraper("amazon")
+    scraper = await get_scraper("amazon", db_session)
     assert isinstance(scraper, AmazonScraper)
 
 
-def test_get_scraper_ebay_raises() -> None:
+@pytest.mark.asyncio
+async def test_get_scraper_ebay_resolves(db_session) -> None:
+    # ebay/currys were advertised by the old enum but had no scraper (create-time
+    # accept, scrape-time UnknownSourceError). They now resolve to real scrapers
+    # via the preset registry — Item 18 fixes the trap.
+    from app.scrapers.ebay import EbayScraper
+
+    scraper = await get_scraper("ebay", db_session)
+    assert isinstance(scraper, EbayScraper)
+
+
+@pytest.mark.asyncio
+async def test_get_scraper_currys_resolves(db_session) -> None:
+    from app.scrapers.currys import CurrysScraper
+
+    scraper = await get_scraper("currys", db_session)
+    assert isinstance(scraper, CurrysScraper)
+
+
+@pytest.mark.asyncio
+async def test_get_scraper_unknown_raises(db_session) -> None:
     with pytest.raises(UnknownSourceError):
-        get_scraper("ebay")
+        await get_scraper("unknown_source", db_session)
 
 
-def test_get_scraper_currys_raises() -> None:
-    with pytest.raises(UnknownSourceError):
-        get_scraper("currys")
-
-
-def test_get_scraper_unknown_raises() -> None:
-    with pytest.raises(UnknownSourceError):
-        get_scraper("unknown_source")
-
-
-def test_get_scraper_with_kwargs() -> None:
-    scraper = get_scraper("generic", css_selector=".price")
+@pytest.mark.asyncio
+async def test_get_scraper_with_kwargs(db_session) -> None:
+    scraper = await get_scraper("generic", db_session, css_selector=".price")
     assert isinstance(scraper, GenericScraper)
     assert scraper.css_selector == ".price"
 
@@ -404,20 +417,23 @@ def test_get_scraper_with_kwargs() -> None:
 # ── queue_for_source_type ───────────────────────────────────────────────────────
 
 
-def test_queue_for_source_type_amazon_uses_playwright() -> None:
+@pytest.mark.asyncio
+async def test_queue_for_source_type_amazon_uses_playwright(db_session) -> None:
     # Amazon needs a browser → must run on the playwright worker's queue.
     from app.scrapers.registry import queue_for_source_type
 
-    assert queue_for_source_type("amazon") == "playwright"
+    assert await queue_for_source_type("amazon", db_session) == "playwright"
 
 
-def test_queue_for_source_type_generic_uses_default() -> None:
+@pytest.mark.asyncio
+async def test_queue_for_source_type_generic_uses_default(db_session) -> None:
     from app.scrapers.registry import queue_for_source_type
 
-    assert queue_for_source_type("generic") == "default"
+    assert await queue_for_source_type("generic", db_session) == "default"
 
 
-def test_queue_for_source_type_unknown_falls_back_to_default() -> None:
+@pytest.mark.asyncio
+async def test_queue_for_source_type_unknown_falls_back_to_default(db_session) -> None:
     from app.scrapers.registry import queue_for_source_type
 
-    assert queue_for_source_type("something-else") == "default"
+    assert await queue_for_source_type("something-else", db_session) == "default"

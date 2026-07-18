@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from app.models.alert import AlertDirection, PriceAlert
 from app.models.enums import ExtractionStatus
 from app.models.price_history import PriceRecord
-from app.models.product import Product, SourceType
+from app.models.product import Product
 from app.schemas.scraper import ScrapedResult
 from app.services import alert_service, price_service
 
@@ -43,7 +43,7 @@ async def _insert_product(session) -> Product:
     product = Product(
         name="Test Product",
         url="http://example.com/product",
-        source_type=SourceType.generic,
+        source_type="generic",
         css_selector=".price",
         is_active=True,
     )

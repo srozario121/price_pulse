@@ -28,13 +28,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCreateProduct, useUpdateProduct } from '@/hooks/useProducts';
+import { useSources } from '@/hooks/useSources';
 import type { ProductRead } from '@/api/types';
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
   url: z.string().url('Must be a valid URL'),
-  source_type: z.enum(['generic', 'amazon', 'ebay', 'currys']),
+  source_type: z.string().min(1, 'Source type is required'),
   css_selector: z.string().optional(),
+  css_selector_currency: z.string().optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -55,6 +57,7 @@ export function ProductFormDialog({
 }: ProductFormDialogProps) {
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct(product?.id ?? 0);
+  const { data: sources } = useSources();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -63,6 +66,7 @@ export function ProductFormDialog({
       url: '',
       source_type: 'generic',
       css_selector: '',
+      css_selector_currency: '',
       is_active: true,
     },
   });
@@ -76,6 +80,7 @@ export function ProductFormDialog({
         url: product.url,
         source_type: product.source_type,
         css_selector: product.css_selector ?? '',
+        css_selector_currency: product.css_selector_currency ?? '',
         is_active: product.is_active,
       });
     } else if (mode === 'create') {
@@ -84,6 +89,7 @@ export function ProductFormDialog({
         url: '',
         source_type: 'generic',
         css_selector: '',
+        css_selector_currency: '',
         is_active: true,
       });
     }
@@ -93,6 +99,7 @@ export function ProductFormDialog({
     const payload = {
       ...values,
       css_selector: values.css_selector || null,
+      css_selector_currency: values.css_selector_currency || null,
     };
     try {
       if (mode === 'create') {
@@ -159,10 +166,11 @@ export function ProductFormDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="generic">Generic</SelectItem>
-                      <SelectItem value="amazon">Amazon</SelectItem>
-                      <SelectItem value="ebay">eBay</SelectItem>
-                      <SelectItem value="currys">Currys</SelectItem>
+                      {(sources ?? []).map((preset) => (
+                        <SelectItem key={preset.key} value={preset.key}>
+                          {preset.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -170,19 +178,34 @@ export function ProductFormDialog({
               )}
             />
             {sourceType === 'generic' && (
-              <FormField
-                control={form.control}
-                name="css_selector"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>CSS Selector</FormLabel>
-                    <FormControl>
-                      <Input placeholder=".price" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <>
+                <FormField
+                  control={form.control}
+                  name="css_selector"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>CSS Selector</FormLabel>
+                      <FormControl>
+                        <Input placeholder=".price" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="css_selector_currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>CSS Selector (Currency)</FormLabel>
+                      <FormControl>
+                        <Input placeholder=".currency" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
             )}
             <DialogFooter>
               <Button

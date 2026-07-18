@@ -1,67 +1,89 @@
-"""Registry mapping source_type strings to scraper classes."""
+"""Data-driven scraper registry, resolved from the SourcePreset table (Item 18).
+
+The two divergent hardcoded ``SourceType`` enums (``models/product.py`` +
+this module) are gone. A source type is now valid iff an *enabled* ``SourcePreset``
+row exists for it; the preset declares the extraction ``strategy`` (which scraper
+class runs) and the Celery ``queue`` (which worker executes it). Onboarding a new
+UK retailer is therefore a data change, not a code + enum + migration change.
+
+``strategy`` → scraper class is the one thing that stays in code (the classes are
+code), mapped by ``_STRATEGY_REGISTRY`` below.
+"""
 
 from __future__ import annotations
 
-import enum
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.scrapers.amazon import AmazonScraper
 from app.scrapers.base import BaseScraper
+from app.scrapers.currys import CurrysScraper
+from app.scrapers.ebay import EbayScraper
 from app.scrapers.exceptions import UnknownSourceError
+from app.scrapers.facebook_marketplace import FacebookMarketplaceScraper
 from app.scrapers.generic import GenericScraper
-
-
-class SourceType(enum.StrEnum):
-    GENERIC = "generic"
-    AMAZON = "amazon"
-    EBAY = "ebay"
-    CURRYS = "currys"
-
-
-_REGISTRY: dict[SourceType, type[BaseScraper]] = {
-    SourceType.GENERIC: GenericScraper,
-    SourceType.AMAZON: AmazonScraper,
-}
+from app.scrapers.john_lewis import JohnLewisScraper
+from app.services import source_preset_service
 
 # ── Celery queue routing ────────────────────────────────────────────────────────
-# The Amazon scraper drives a real headless browser (Playwright/Chromium), which
-# is installed ONLY on the dedicated ``celery-playwright`` worker (queue
-# "playwright"). Every other source type runs on the default worker. Callers that
-# dispatch ``scrape_product`` must route by source_type using this helper —
-# otherwise Amazon tasks land on the browserless default worker and fail with
-# "BrowserType.launch: Executable doesn't exist".
+# Browser-driven (Playwright/Chromium) scrapers must run on the dedicated
+# "playwright" worker; every httpx-based scraper runs on "default". The queue is
+# now carried per-preset (data-driven) rather than a hardcoded frozenset — adding
+# a browser-required retailer no longer needs a code change here.
 DEFAULT_QUEUE = "default"
 PLAYWRIGHT_QUEUE = "playwright"
 
-# Source types whose scraper needs a browser and must run on the playwright queue.
-_PLAYWRIGHT_SOURCE_TYPES = frozenset({SourceType.AMAZON})
+# strategy → scraper class. The preset's ``strategy`` selects the implementation.
+_STRATEGY_REGISTRY: dict[str, type[BaseScraper]] = {
+    "generic": GenericScraper,
+    "amazon": AmazonScraper,
+    "ebay": EbayScraper,
+    "currys": CurrysScraper,
+    "john_lewis": JohnLewisScraper,
+    "facebook_marketplace": FacebookMarketplaceScraper,
+}
+
+# Strategies whose scraper accepts the per-product CSS-selector kwargs.
+_SELECTOR_STRATEGIES = frozenset({"generic"})
 
 
-def queue_for_source_type(source_type: str) -> str:
+async def queue_for_source_type(source_type: str, session: AsyncSession) -> str:
     """Return the Celery queue that can execute *source_type*'s scraper.
 
-    Unknown source types fall back to the default queue; the scraper lookup will
-    surface any real ``UnknownSourceError`` when the task actually runs.
+    Unknown/disabled source types fall back to the default queue; the scraper
+    lookup (:func:`get_scraper`) surfaces the real ``UnknownSourceError`` when the
+    task actually runs, so queue routing stays best-effort and never 500s a
+    schedule registration.
     """
-    try:
-        st = SourceType(source_type)
-    except ValueError:
-        return DEFAULT_QUEUE
-    return PLAYWRIGHT_QUEUE if st in _PLAYWRIGHT_SOURCE_TYPES else DEFAULT_QUEUE
+    preset = await source_preset_service.resolve_enabled_preset(session, source_type)
+    return preset.queue if preset is not None else DEFAULT_QUEUE
 
 
-def get_scraper(source_type: str, **kwargs: object) -> BaseScraper:
-    """Return a configured BaseScraper for the given source_type.
+async def get_scraper(
+    source_type: str,
+    session: AsyncSession,
+    *,
+    css_selector: str | None = None,
+    css_selector_currency: str | None = None,
+) -> BaseScraper:
+    """Return a configured scraper for *source_type*, resolved from its preset.
 
-    kwargs are passed to the scraper constructor (e.g. css_selector for GenericScraper).
-    Raises UnknownSourceError for 'ebay', 'currys', or unrecognised strings.
+    Raises ``UnknownSourceError`` when no *enabled* preset exists for
+    *source_type*, or when its preset declares a strategy with no registered
+    scraper class.
     """
-    try:
-        st = SourceType(source_type)
-    except ValueError as exc:
-        raise UnknownSourceError(f"No scraper registered for source_type={source_type!r}") from exc
+    preset = await source_preset_service.resolve_enabled_preset(session, source_type)
+    if preset is None:
+        raise UnknownSourceError(f"No enabled source preset for source_type={source_type!r}")
 
-    scraper_cls = _REGISTRY.get(st)
+    scraper_cls = _STRATEGY_REGISTRY.get(preset.strategy)
     if scraper_cls is None:
-        raise UnknownSourceError(f"No scraper registered for source_type={source_type!r}")
+        raise UnknownSourceError(
+            f"Source preset {source_type!r} declares unknown strategy {preset.strategy!r}"
+        )
 
-    return scraper_cls(**kwargs)
+    if preset.strategy in _SELECTOR_STRATEGIES:
+        return scraper_cls(
+            css_selector=css_selector,
+            css_selector_currency=css_selector_currency,
+        )
+    return scraper_cls()

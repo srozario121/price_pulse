@@ -59,11 +59,18 @@ eslint_max_warnings = 0
 # block/category integration test re-covers the /products/failing route + service
 # lines. This is the "different behaviours sharing an execution path" case the gate
 # re-baselines for, not net-new redundant assertions.
+#
+# Re-baselined 2026-07-17 frontend (1112 -> 1143): Item 18 configurable sources. The
+# new ProductFormDialog test ("renders source options fetched from GET /api/v1/sources")
+# asserts a *distinct* behaviour — the source <Select> is populated from the mocked
+# /api/v1/sources endpoint — but necessarily re-renders the dialog, re-covering the
+# shared ProductFormDialog render lines the existing dialog tests already exercise
+# (unit tier). Captured on Node 20 (CI runtime).
 baseline_backend_duplicate_lines = 941
-baseline_frontend_duplicate_lines = 1112
+baseline_frontend_duplicate_lines = 1143
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
 max_intra_tier_duplicate_lines_backend = 941
-max_intra_tier_duplicate_lines_frontend = 1112
+max_intra_tier_duplicate_lines_frontend = 1143

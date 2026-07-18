@@ -36,6 +36,33 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
+def _seed_source_presets(sync_conn) -> None:  # noqa: ANN001 — sync SQLA connection
+    """Seed the six built-in source presets (Item 18).
+
+    Tests build the schema via ``Base.metadata.create_all`` rather than running
+    the Alembic seed migration, so the ``source_preset`` table starts empty. The
+    registry and the product-create route both resolve/validate ``source_type``
+    against enabled presets, so seed the built-ins for every test engine. Uses the
+    same canonical list as migration 0007; idempotent.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from app.models.source_preset import SourcePreset
+    from app.services.source_preset_service import BUILTIN_SOURCE_PRESETS
+
+    # Assign explicit ids: the SQLite test path (sync connection + RETURNING) does
+    # not autofill the BigInteger PK, and production seeds via the Alembic
+    # migration (Postgres BIGSERIAL) rather than this helper. Flush only — the
+    # surrounding ``engine.begin()`` owns the commit.
+    with Session(bind=sync_conn, expire_on_commit=False) as session:
+        existing = set(session.scalars(select(SourcePreset.source_type)).all())
+        for idx, row in enumerate(BUILTIN_SOURCE_PRESETS, start=1):
+            if row["source_type"] not in existing:
+                session.add(SourcePreset(id=idx, **row))
+        session.flush()
+
+
 # ── Database fixtures ──────────────────────────────────────────────────────────
 
 
@@ -47,6 +74,7 @@ async def db_engine():
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_seed_source_presets)
 
     yield engine
 
@@ -152,7 +180,13 @@ async def pg_engine(pg_container):
     from sqlalchemy.pool import NullPool
 
     from app.core.database import Base
-    from app.models import alert, notification_log, price_history, product  # noqa: F401
+    from app.models import (  # noqa: F401
+        alert,
+        notification_log,
+        price_history,
+        product,
+        source_preset,
+    )
 
     raw_url: str = pg_container.get_connection_url()
     async_url = raw_url.replace("+psycopg2", "+asyncpg").replace(
@@ -162,6 +196,7 @@ async def pg_engine(pg_container):
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_seed_source_presets)
 
     yield engine
 

@@ -47,4 +47,28 @@ describe('ProductFormDialog', () => {
     // Default source_type is 'generic', so css_selector should be visible
     expect(screen.getByPlaceholderText('.price')).toBeInTheDocument();
   });
+
+  it('renders source options fetched from GET /api/v1/sources', async () => {
+    render(
+      <ProductFormDialog
+        mode="create"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+      { wrapper }
+    );
+
+    const trigger = screen.getByRole('combobox');
+    await userEvent.click(trigger);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('option', { name: 'John Lewis' })
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('option', { name: 'eBay UK' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Facebook Marketplace' })
+    ).toBeInTheDocument();
+  });
 });

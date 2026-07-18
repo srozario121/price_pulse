@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -16,23 +15,16 @@ if TYPE_CHECKING:
     from app.models.price_history import PriceRecord
 
 
-class SourceType(enum.StrEnum):
-    generic = "generic"
-    amazon = "amazon"
-    ebay = "ebay"
-    currys = "currys"
-
-
 class Product(Base):
     __tablename__ = "product"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     url: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    source_type: Mapped[SourceType] = mapped_column(
-        Enum(SourceType, name="source_type_enum", native_enum=True),
-        nullable=False,
-    )
+    # Open string validated at the API boundary against the enabled SourcePreset
+    # registry — no native enum, so onboarding a new source is a data change
+    # (Item 18). See services/source_preset_service.py.
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     css_selector: Mapped[str | None] = mapped_column(String, nullable=True)
     css_selector_currency: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

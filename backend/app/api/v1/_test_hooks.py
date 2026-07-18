@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.alert import PriceAlert
 from app.models.product import Product
-from app.scrapers.registry import SourceType, get_scraper
+from app.scrapers.registry import get_scraper
 from app.services import price_service
 
 logger = structlog.get_logger(__name__)
@@ -55,12 +55,12 @@ async def scrape_sync(
         )
 
     source_type = str(product.source_type)
-    kwargs: dict[str, object] = {}
-    if source_type == SourceType.GENERIC:
-        kwargs["css_selector"] = product.css_selector
-        kwargs["css_selector_currency"] = product.css_selector_currency
-
-    scraper = get_scraper(source_type, **kwargs)
+    scraper = await get_scraper(
+        source_type,
+        db,
+        css_selector=product.css_selector,
+        css_selector_currency=product.css_selector_currency,
+    )
     scraped = await scraper.fetch(product.url)
 
     record = await price_service.record_price(

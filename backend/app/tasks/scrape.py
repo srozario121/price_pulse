@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.product import Product
-from app.scrapers.registry import SourceType, get_scraper
+from app.scrapers.registry import get_scraper
 from app.services import price_service
 from app.workers.celery_app import celery_app
 
@@ -49,13 +49,15 @@ async def scrape_product(self: object, product_id: int) -> str:
 
             source_type = str(product.source_type)
 
-            # Build scraper kwargs
-            kwargs: dict[str, object] = {}
-            if source_type == SourceType.GENERIC:
-                kwargs["css_selector"] = product.css_selector
-                kwargs["css_selector_currency"] = product.css_selector_currency
-
-            scraper = get_scraper(source_type, **kwargs)
+            # Resolve the scraper from the DB-backed preset registry. The registry
+            # only forwards the CSS-selector kwargs to selector-based strategies
+            # (generic); other strategies ignore them.
+            scraper = await get_scraper(
+                source_type,
+                session,
+                css_selector=product.css_selector,
+                css_selector_currency=product.css_selector_currency,
+            )
             scraped = await scraper.fetch(product.url)
 
             # Persist result

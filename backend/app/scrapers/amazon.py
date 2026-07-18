@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -20,6 +19,10 @@ from app.scrapers.anti_blocking import (
 )
 from app.scrapers.base import BaseScraper
 from app.scrapers.exceptions import ScraperError
+
+# Shared locale-aware price normaliser (canonical home: playwright_base). Imported
+# so amazon's DOM-fallback parser and its tests keep using one implementation.
+from app.scrapers.playwright_base import _normalize_price_text
 
 logger = structlog.get_logger()
 
@@ -154,40 +157,6 @@ _DOM_PRICE_SCRIPT = """
     return null;
 }
 """
-
-
-def _normalize_price_text(raw: str) -> Decimal | None:
-    """Convert a locale-formatted price string to a Decimal, or None if unparseable.
-
-    Amazon renders prices in the marketplace's locale, so the roles of ``.`` and
-    ``,`` differ: ``1,234.56`` (en-US/en-GB) vs ``1.234,56`` (de/fr/es/it). The
-    separator that appears *last* is the decimal point; earlier separators group
-    thousands. When only one kind of separator is present, a trailing group of
-    exactly two digits is read as a decimal fraction (``1234,56`` -> 1234.56),
-    otherwise the separators group thousands (``1,234`` -> 1234, ``1.234.567`` ->
-    1234567).
-    """
-    cleaned = re.sub(r"[^0-9.,]", "", raw or "")
-    if not any(ch.isdigit() for ch in cleaned):
-        return None
-
-    has_comma = "," in cleaned
-    has_dot = "." in cleaned
-    if has_comma and has_dot:
-        if cleaned.rfind(",") > cleaned.rfind("."):
-            num = cleaned.replace(".", "").replace(",", ".")  # 1.234,56 -> 1234.56
-        else:
-            num = cleaned.replace(",", "")  # 1,234.56 -> 1234.56
-    elif has_comma:
-        head, _, tail = cleaned.rpartition(",")
-        num = f"{head.replace(',', '')}.{tail}" if len(tail) == 2 else cleaned.replace(",", "")
-    else:
-        num = cleaned.replace(".", "") if cleaned.count(".") > 1 else cleaned
-
-    try:
-        return Decimal(num)
-    except InvalidOperation:
-        return None
 
 
 def _parse_dom_result(

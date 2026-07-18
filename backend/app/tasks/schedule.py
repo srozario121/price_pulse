@@ -106,14 +106,21 @@ async def _sync_schedules_async() -> None:
         result = await session.execute(stmt)
         products = result.scalars().all()
 
-    for product in products:
+        # Resolve each product's queue from the DB-backed preset registry while the
+        # session is open (queue_for_source_type is async and DB-backed).
+        schedule_specs = [
+            (product.id, await queue_for_source_type(str(product.source_type), session))
+            for product in products
+        ]
+
+    for product_id, queue in schedule_specs:
         register_product_schedule(
-            product.id,
+            product_id,
             settings.SCRAPE_INTERVAL_MINUTES,
-            queue=queue_for_source_type(str(product.source_type)),
+            queue=queue,
         )
 
-    logger.info("startup_schedules_synced", product_count=len(products))
+    logger.info("startup_schedules_synced", product_count=len(schedule_specs))
 
 
 def startup_sync_schedules() -> None:

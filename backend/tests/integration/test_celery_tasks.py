@@ -133,7 +133,7 @@ async def test_scrape_product_creates_price_record(pg_engine, pg_session_factory
 
     with (
         patch("app.tasks.scrape.AsyncSessionLocal", return_value=session_ctx),
-        patch("app.tasks.scrape.get_scraper", return_value=scraper_mock),
+        patch("app.tasks.scrape.get_scraper", AsyncMock(return_value=scraper_mock)),
     ):
         from app.tasks.scrape import scrape_product
 

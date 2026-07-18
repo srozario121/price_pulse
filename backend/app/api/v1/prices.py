@@ -99,9 +99,9 @@ async def trigger_scrape(
             detail="Product is not active",
         )
 
-    # Route to the queue whose worker can run this source type's scraper:
-    # Amazon needs the Playwright worker; everything else uses the default worker.
-    queue = queue_for_source_type(str(product.source_type))
+    # Route to the queue whose worker can run this source type's scraper,
+    # resolved from the source's preset (browser sources → the Playwright worker).
+    queue = await queue_for_source_type(str(product.source_type), db)
     task = scrape_product.apply_async((product_id,), queue=queue)
     logger.info("scrape_job_queued", product_id=product_id, task_id=task.id, queue=queue)
 

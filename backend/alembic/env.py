@@ -23,7 +23,13 @@ from app.core.database import Base
 
 # ── Models — import every module so Alembic sees all mapped tables ─────────────
 # (populate this list as models are added in item 3)
-from app.models import alert, notification_log, price_history, product  # noqa: F401
+from app.models import (  # noqa: F401
+    alert,
+    notification_log,
+    price_history,
+    product,
+    source_preset,
+)
 
 # ── Alembic config ─────────────────────────────────────────────────────────────
 config = context.config

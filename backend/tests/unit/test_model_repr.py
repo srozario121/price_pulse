@@ -14,15 +14,13 @@ import app.models.product  # noqa: F401
 from app.models.alert import AlertDirection, PriceAlert
 from app.models.notification_log import NotificationLog, NotificationStatus
 from app.models.price_history import PriceRecord
-from app.models.product import Product, SourceType
+from app.models.product import Product
 
 
 class TestModelRepr:
     def test_product_repr_includes_id_and_name(self):
         # Arrange
-        p = Product(
-            id=42, name="Test Widget", url="https://example.com", source_type=SourceType.amazon
-        )
+        p = Product(id=42, name="Test Widget", url="https://example.com", source_type="amazon")
         # Act / Assert
         assert "42" in repr(p)
         assert "Test Widget" in repr(p)
