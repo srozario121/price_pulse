@@ -28,9 +28,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
         <div className="container flex h-14 items-center justify-between">
-          <Link to="/" className="font-bold text-lg">
-            Price Pulse
-          </Link>
+          <div className="flex items-center gap-6">
+            <Link to="/" className="font-bold text-lg">
+              Price Pulse
+            </Link>
+            <Link
+              to="/jobs"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Jobs
+            </Link>
+          </div>
           <Button
             variant="ghost"
             size="icon"

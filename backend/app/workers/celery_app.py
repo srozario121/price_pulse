@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import celery_aio_pool
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -34,7 +35,12 @@ celery_app = Celery(
     "price_pulse",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.scrape", "app.tasks.notify", "app.tasks.schedule"],
+    include=[
+        "app.tasks.scrape",
+        "app.tasks.notify",
+        "app.tasks.schedule",
+        "app.tasks.maintenance",
+    ],
 )
 
 celery_app.conf.update(
@@ -75,4 +81,21 @@ celery_app.conf.update(
     # newly-registered schedules fire promptly (negligible overhead at 30-min
     # production intervals).
     beat_max_loop_interval=5,
+    # ── Static beat schedule ──────────────────────────────────────────────────
+    # Per-product scrape schedules are dynamic RedBeat entries; this static entry
+    # is the one recurring maintenance job. RedBeat merges conf.beat_schedule into
+    # Redis on startup, so it runs alongside the dynamic entries.
+    beat_schedule={
+        "prune-scrape-jobs-daily": {
+            "task": "app.tasks.maintenance.prune_scrape_jobs",
+            "schedule": crontab(hour=3, minute=0),  # daily at 03:00 UTC
+        },
+    },
 )
+
+# Register the ScrapeJob lifecycle signal handlers (Item 17). Imported for the
+# side effect of connecting before_task_publish / task_prerun / task_postrun in
+# every process that imports celery_app — the API (on-demand publish), beat
+# (scheduled publish), and the worker (prerun/postrun). Kept last so celery_app
+# is fully configured first; the module does not import celery_app (no cycle).
+import app.workers.scrape_job_signals  # noqa: E402,F401

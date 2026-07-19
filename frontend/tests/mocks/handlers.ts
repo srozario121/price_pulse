@@ -5,6 +5,8 @@ import type {
   AlertRead,
   PaginatedResponse,
   ScrapeJobResponse,
+  ScrapeJobRead,
+  QueueDepthResponse,
   SourcePreset,
 } from '../../src/api/types';
 
@@ -91,7 +93,77 @@ const mockAlert2: AlertRead = {
   whatsapp_number: null,
 };
 
+const mockScrapeJobs: ScrapeJobRead[] = [
+  {
+    id: 1,
+    product_id: 1,
+    task_id: 'task-abc-123',
+    queue: 'default',
+    trigger: 'on_demand',
+    status: 'success',
+    extraction_status: 'ok',
+    detail: null,
+    retries: 0,
+    enqueued_at: '2026-07-19T10:00:00Z',
+    started_at: '2026-07-19T10:00:01Z',
+    finished_at: '2026-07-19T10:00:03Z',
+  },
+  {
+    id: 2,
+    product_id: 2,
+    task_id: 'task-def-456',
+    queue: 'playwright',
+    trigger: 'scheduled',
+    status: 'failure',
+    extraction_status: 'blocked',
+    detail: null,
+    retries: 2,
+    enqueued_at: '2026-07-19T09:30:00Z',
+    started_at: '2026-07-19T09:30:01Z',
+    finished_at: '2026-07-19T09:30:05Z',
+  },
+];
+
 export const handlers = [
+  // Scrape jobs
+  http.get('/api/v1/scrape-jobs/queue-depth', () => {
+    const response: QueueDepthResponse = {
+      queues: [
+        { queue: 'default', messages: 0 },
+        { queue: 'playwright', messages: 1 },
+      ],
+      workers_online: 2,
+    };
+    return HttpResponse.json(response);
+  }),
+
+  http.get('/api/v1/scrape-jobs', ({ request }) => {
+    const url = new URL(request.url);
+    const productId = url.searchParams.get('product_id');
+    const items = productId
+      ? mockScrapeJobs.filter((j) => j.product_id === Number(productId))
+      : mockScrapeJobs;
+    const response: PaginatedResponse<ScrapeJobRead> = {
+      items,
+      total: items.length,
+      limit: Number(url.searchParams.get('limit') ?? 20),
+      offset: 0,
+    };
+    return HttpResponse.json(response);
+  }),
+
+  http.get('/api/v1/products/:id/scrape-jobs', ({ params }) => {
+    const id = Number(params.id);
+    const items = mockScrapeJobs.filter((j) => j.product_id === id);
+    const response: PaginatedResponse<ScrapeJobRead> = {
+      items,
+      total: items.length,
+      limit: 20,
+      offset: 0,
+    };
+    return HttpResponse.json(response);
+  }),
+
   // Sources
   http.get('/api/v1/sources', () => {
     return HttpResponse.json(mockSources);

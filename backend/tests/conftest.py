@@ -71,6 +71,17 @@ async def db_engine():
     """In-memory SQLite engine with schema created and torn down per test."""
     from app.core.database import Base
 
+    # Import every model so Base.metadata is complete before create_all (mirrors
+    # the pg_engine fixture; the SQLite path has no other import trigger).
+    from app.models import (  # noqa: F401
+        alert,
+        notification_log,
+        price_history,
+        product,
+        scrape_job,
+        source_preset,
+    )
+
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -185,6 +196,7 @@ async def pg_engine(pg_container):
         notification_log,
         price_history,
         product,
+        scrape_job,
         source_preset,
     )
 

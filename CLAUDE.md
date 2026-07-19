@@ -120,8 +120,9 @@ Layered FastAPI application:
 
 **API layer** (`api/v1/`): thin route handlers — validate input, call service, return schema. No business logic in routes.
 - `products.py` — CRUD for tracked products
-- `prices.py` — paginated price history; trigger on-demand scrape
+- `prices.py` — paginated price history; trigger on-demand scrape (tags the dispatch with a `pp_trigger="on_demand"` Celery header for `ScrapeJob` tracking, Item 17)
 - `alerts.py` — CRUD for price alert thresholds
+- `scrape_jobs.py` — scrape-job visibility (Item 17): `GET /scrape-jobs` (paginated, filterable by `product_id`/`status`/`queue`/`task_id`), `GET /products/{id}/scrape-jobs`, and best-effort `GET /scrape-jobs/queue-depth`
 
 **Service layer** (`services/`): business logic; the only layer that writes to the DB.
 - `price_service.py` — deduplicates by HTML hash; persists `PriceRecord`; calls `alert_service.evaluate_alerts`
@@ -144,6 +145,8 @@ Layered FastAPI application:
 - `tasks/scrape.py` — `scrape_product(product_id)` — fetch → extract → service; retry with exponential back-off
 - `tasks/schedule.py` — beat schedule (default: all active products every 30 min)
 - `tasks/notify.py` — `send_notification(alert_id)` — dispatch + persist `NotificationLog`
+- `tasks/maintenance.py` — `prune_scrape_jobs` — daily beat task (static `beat_schedule`) deleting `ScrapeJob` rows older than `SCRAPE_JOB_RETENTION_DAYS` (Item 17)
+- `workers/scrape_job_signals.py` — **Celery-signal lifecycle tracking** (Item 17): `before_task_publish` (both on-demand + scheduled dispatch) creates a `queued` `ScrapeJob` row; `task_prerun`→`started`; `task_postrun` finalises, folding the extraction outcome into `success`/`failure`. Writes use a dedicated **synchronous** session (the signals fire inside the worker's running aio-pool loop, so `asyncio.run()` would raise); every handler filters to `scrape_product`, is fully guarded (never breaks scraping/notification), and upserts by the unique `task_id`. Imported by `celery_app.py` so handlers register in the API, beat, and worker processes.
 
 **Migrations**: Alembic under `backend/alembic/`; `env.py` imports all models for autogenerate.
 
@@ -223,6 +226,7 @@ Copy `.env.example` to `.env`. Key variables:
 | `DEBUG` | `false` | Enable debug mode; also controls CORS and log format |
 | `CORS_ORIGINS` | `["*"]` when DEBUG=true, required otherwise | Allowed CORS origins (comma-separated) |
 | `SCRAPE_INTERVAL_MINUTES` | `30` | Default Celery Beat interval |
+| `SCRAPE_JOB_RETENTION_DAYS` | `7` | Age (days) beyond which `prune_scrape_jobs` deletes `ScrapeJob` rows (Item 17) |
 | `PROXY_URLS` | `` (empty ⇒ disabled) | BYO rotating-proxy list, comma-separated (`scheme://[user:pass@]host[:port]`, schemes: http/https/socks5/socks5h/socks4). Per-request pick + rotate-on-block across both fetch paths |
 | `MAX_PROXY_ROTATIONS` | `2` | Max proxy rotations per fetch on a detected block before the scrape resolves to `blocked`/`captcha` |
 | `LOG_LEVEL` | `INFO` | structlog level |

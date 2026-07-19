@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     SCRAPE_INTERVAL_MINUTES: int = 30
     SCRAPE_MIN_DELAY_SECONDS: int = 2
     ALERT_COOLDOWN_HOURS: int = 24
+    # Item 17: ScrapeJob rows older than this are deleted by the daily
+    # ``prune_scrape_jobs`` beat task. At a 30-min cadence × every active product
+    # the table grows unbounded without a prune; the default bounds it to a week.
+    SCRAPE_JOB_RETENTION_DAYS: int = 7
 
     # ── Anti-blocking (Item 15) ───────────────────────────────────────────────
     # Bring-your-own rotating-proxy list, comma-separated in the env var
@@ -116,6 +120,13 @@ class Settings(BaseSettings):
     def max_proxy_rotations_non_negative(cls, v: int) -> int:
         if v < 0:
             raise ValueError("MAX_PROXY_ROTATIONS must be >= 0")
+        return v
+
+    @field_validator("SCRAPE_JOB_RETENTION_DAYS")
+    @classmethod
+    def scrape_job_retention_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("SCRAPE_JOB_RETENTION_DAYS must be >= 1")
         return v
 
     @field_validator("SECRET_KEY")

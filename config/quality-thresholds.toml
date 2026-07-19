@@ -77,11 +77,27 @@ eslint_max_warnings = 0
 # "endpoint needs a live DB, each scenario re-runs the route" case already re-baselined
 # for /products/failing). Captured on the CI runtime — Python 3.12 (this count is highly
 # runtime-sensitive; local runs on other Python versions report a different absolute).
-baseline_backend_duplicate_lines = 1096
-baseline_frontend_duplicate_lines = 1143
+#
+# Re-baselined 2026-07-19 frontend (1143 -> 1229): Item 17 queued-scrape visibility. The
+# new Jobs-view test renders the full page (re-covering shared Card/Skeleton/Badge/table
+# primitives the Dashboard/ProductDetail tests already exercise), the ScrapeJobStatusBadge
+# test re-covers the shared Badge component, and the useScrapeJobs hook test re-covers the
+# react-query client wiring — all distinct behaviours sharing UI/query lines the existing
+# unit tests already touch, not net-new redundant assertions. Captured on Node 20 (CI).
+#
+# Re-baselined 2026-07-19 backend (1096 -> 1169): Item 17 queued-scrape visibility. The
+# ScrapeJob signal-handler tests share execution paths within a tier — the two unit
+# guard/filter tests (ignores-other-senders / missing-ids-is-noop) both re-cover the
+# before_task_publish wrapper + id-extraction lines, and the two integration tests
+# (publish-for-missing-product / republish-same-task-id) both re-cover the guarded sync
+# upsert path — distinct behaviours (FK-swallow vs idempotent republish) sharing the same
+# handler lines, the "different behaviours sharing an execution path" case the gate
+# re-baselines for. Captured on the CI runtime — Python 3.12.
+baseline_backend_duplicate_lines = 1169
+baseline_frontend_duplicate_lines = 1229
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
-max_intra_tier_duplicate_lines_backend = 1096
-max_intra_tier_duplicate_lines_frontend = 1143
+max_intra_tier_duplicate_lines_backend = 1169
+max_intra_tier_duplicate_lines_frontend = 1229

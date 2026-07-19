@@ -404,7 +404,10 @@ class TestPricesRouteDirect:
             mock_scrape.apply_async = MagicMock(return_value=mock_task)
             result = await trigger_scrape(product_id=product.id, db=pg_session)
 
-        # Generic products route to the default queue.
-        mock_scrape.apply_async.assert_called_once_with((product.id,), queue="default")
+        # Generic products route to the default queue; the on-demand dispatch
+        # carries the pp_trigger header for ScrapeJob tracking (Item 17).
+        mock_scrape.apply_async.assert_called_once_with(
+            (product.id,), queue="default", headers={"pp_trigger": "on_demand"}
+        )
         assert result.task_id == "test-task-id"
         assert result.status == "queued"

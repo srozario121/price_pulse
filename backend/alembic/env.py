@@ -28,6 +28,7 @@ from app.models import (  # noqa: F401
     notification_log,
     price_history,
     product,
+    scrape_job,
     source_preset,
 )
 

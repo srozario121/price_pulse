@@ -4,6 +4,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Dashboard } from '@/pages/Dashboard';
 import { ProductDetail } from '@/pages/ProductDetail';
 import { AlertManager } from '@/pages/AlertManager';
+import { Jobs } from '@/pages/Jobs';
 
 export function App() {
   return (
@@ -11,6 +12,7 @@ export function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/jobs" element={<Jobs />} />
           <Route path="/products/:id" element={<ProductDetail />} />
           <Route path="/products/:id/alerts" element={<AlertManager />} />
         </Routes>
