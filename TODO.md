@@ -559,7 +559,7 @@ Arrange-Assert-Act for all backend tests.
 
 ---
 
-## 17. Queued-Scrape Visibility: List Queued/Running Jobs & Their Statuses
+## 17. Queued-Scrape Visibility: List Queued/Running Jobs & Their Statuses ✅ COMPLETE
 
 There is no first-class, product-facing way to see what scrapes are queued, in-flight, or
 failed. `POST /products/{id}/scrape` returns a `task_id` + `status: "queued"` and then the
@@ -611,30 +611,30 @@ observable directly.
 ### Tasks
 
 **Model + migration**
-- [ ] Create `ScrapeJobStatus` StrEnum (`queued`/`started`/`success`/`failure`) in `models/enums.py`.
-- [ ] Create `models/scrape_job.py` `ScrapeJob` per the resolved shape (BigInt keys, `product_id` FK `ondelete=CASCADE`, unique `task_id`, string `status`/`extraction_status`, `trigger`, `retries`, three tz-aware timestamps, the three indexes). Add the back-reference on `Product` if a relationship is wanted (optional — endpoints query by `product_id` directly).
-- [ ] Alembic migration creating `scrape_job` + indexes; register the model import in `alembic/env.py` if not auto-picked-up.
+- [x] Create `ScrapeJobStatus` StrEnum (`queued`/`started`/`success`/`failure`) in `models/enums.py`.
+- [x] Create `models/scrape_job.py` `ScrapeJob` per the resolved shape (BigInt keys, `product_id` FK `ondelete=CASCADE`, unique `task_id`, string `status`/`extraction_status`, `trigger`, `retries`, three tz-aware timestamps, the three indexes). Add the back-reference on `Product` if a relationship is wanted (optional — endpoints query by `product_id` directly).
+- [x] Alembic migration creating `scrape_job` + indexes; register the model import in `alembic/env.py` if not auto-picked-up.
 
 **Config**
-- [ ] Add `SCRAPE_JOB_RETENTION_DAYS: int = 7` to `core/config.py` `Settings`; document in `.env.example`.
+- [x] Add `SCRAPE_JOB_RETENTION_DAYS: int = 7` to `core/config.py` `Settings`; document in `.env.example`.
 
 **Signal wiring (both dispatch paths)**
-- [ ] Create `workers/scrape_job_signals.py` (imported by `workers/celery_app.py` so handlers register): a dedicated **sync** SQLAlchemy engine/session for `ScrapeJob` writes; `before_task_publish` → upsert `queued` row (filter to `scrape_product`; read `product_id` from args; set `queue`, `trigger` from headers, `enqueued_at`); `task_prerun` → `started` + `started_at` + `retries`; `task_postrun` → finalise off `state` (SUCCESS → map retval to `success`/`failure` + store `extraction_status`; FAILURE → `failure` + `detail`; RETRY → leave `started`) + `finished_at`. Every handler filters to `scrape_product` and is fully guarded (log-and-continue; never raise).
-- [ ] Pass a `trigger="on_demand"` marker (task header/kwarg) from `api/v1/prices.py::trigger_scrape` so `before_task_publish` can distinguish it from the scheduled default.
+- [x] Create `workers/scrape_job_signals.py` (imported by `workers/celery_app.py` so handlers register): a dedicated **sync** SQLAlchemy engine/session for `ScrapeJob` writes; `before_task_publish` → upsert `queued` row (filter to `scrape_product`; read `product_id` from args; set `queue`, `trigger` from headers, `enqueued_at`); `task_prerun` → `started` + `started_at` + `retries`; `task_postrun` → finalise off `state` (SUCCESS → map retval to `success`/`failure` + store `extraction_status`; FAILURE → `failure` + `detail`; RETRY → leave `started`) + `finished_at`. Every handler filters to `scrape_product` and is fully guarded (log-and-continue; never raise).
+- [x] Pass a `trigger="on_demand"` marker (task header/kwarg) from `api/v1/prices.py::trigger_scrape` so `before_task_publish` can distinguish it from the scheduled default.
 
 **API**
-- [ ] `GET /api/v1/scrape-jobs` — `PaginatedResponse[ScrapeJobRead]`, filterable by `product_id` / `status` / `queue` / `task_id`; default sort `enqueued_at DESC`; `limit` capped at 100 (reuse `PaginatedResponse`).
-- [ ] `GET /api/v1/products/{id}/scrape-jobs` — same envelope scoped to one product; **404** if the product does not exist.
-- [ ] `ScrapeJobRead` schema in `schemas/scrape_job.py` (mirrors the model read fields).
-- [ ] *(optional)* `GET /api/v1/scrape-jobs/queue-depth` — best-effort Celery `inspect` per queue; degrades gracefully when no worker answers.
+- [x] `GET /api/v1/scrape-jobs` — `PaginatedResponse[ScrapeJobRead]`, filterable by `product_id` / `status` / `queue` / `task_id`; default sort `enqueued_at DESC`; `limit` capped at 100 (reuse `PaginatedResponse`).
+- [x] `GET /api/v1/products/{id}/scrape-jobs` — same envelope scoped to one product; **404** if the product does not exist.
+- [x] `ScrapeJobRead` schema in `schemas/scrape_job.py` (mirrors the model read fields).
+- [x] *(optional)* `GET /api/v1/scrape-jobs/queue-depth` — best-effort Celery `inspect` per queue; degrades gracefully when no worker answers.
 
 **Retention**
-- [ ] `tasks/maintenance.py` (or extend `tasks/schedule.py`) `prune_scrape_jobs` task deleting rows older than `SCRAPE_JOB_RETENTION_DAYS`; add a daily entry to the static beat schedule.
+- [x] `tasks/maintenance.py` (or extend `tasks/schedule.py`) `prune_scrape_jobs` task deleting rows older than `SCRAPE_JOB_RETENTION_DAYS`; add a daily entry to the static beat schedule.
 
 **Frontend**
-- [ ] `api/client.ts` methods + `ScrapeJobRead` type (`src/api/types.ts`); `useScrapeJobs` react-query hook.
-- [ ] A "Jobs"/activity view listing recent scrape jobs + statuses (route + page); a per-product **last-scrape status badge** on the Dashboard rows (queued/started/success/failure).
-- [ ] MSW handlers for the new endpoints in `tests/mocks/handlers.ts`.
+- [x] `api/client.ts` methods + `ScrapeJobRead` type (`src/api/types.ts`); `useScrapeJobs` react-query hook.
+- [x] A "Jobs"/activity view listing recent scrape jobs + statuses (route + page); a per-product **last-scrape status badge** on the Dashboard rows (queued/started/success/failure).
+- [x] MSW handlers for the new endpoints in `tests/mocks/handlers.ts`.
 
 ### Test strategy
 

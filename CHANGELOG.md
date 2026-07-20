@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Queued-scrape visibility — Item 17)
+
+- **Durable `ScrapeJob` table** (`app/models/scrape_job.py`, `ScrapeJobStatus` enum, Alembic migration `0009`): one lifecycle row per `scrape_product` dispatch, filterable by product/status/queue/task-id — a durable, queryable surface that survives worker/Redis restarts (unlike the ephemeral Celery result backend). `status` / `extraction_status` are open `String` columns (no native enum), matching the `price_record` convention.
+- **Celery-signal lifecycle tracking for both dispatch paths** (`app/workers/scrape_job_signals.py`): `before_task_publish` creates the `queued` row (fires in the API process for on-demand *and* the beat process for scheduled dispatch), `task_prerun` → `started`, `task_postrun` finalises. The extraction outcome is **folded** into the status (`success` only when `extraction_status == "ok"`; any other retval or a raised task → `failure`), with the raw retval / error text preserved in `extraction_status` / `detail`. Writes use a dedicated **synchronous** session (psycopg v3) because the signals fire inside the worker's running aio-pool event loop; every handler filters to `scrape_product`, is fully guarded (never breaks the scrape/notification pipeline), and upserts by the unique `task_id` (`acks_late` retries/redeliveries yield exactly one row).
+- **Scrape-job read endpoints** (`app/api/v1/scrape_jobs.py`, `schemas/scrape_job.py`): `GET /api/v1/scrape-jobs` (paginated, newest-first, filterable by `product_id`/`status`/`queue`/`task_id`; `limit` ≤ 100), `GET /api/v1/products/{id}/scrape-jobs` (404 if the product is absent), and a best-effort `GET /api/v1/scrape-jobs/queue-depth` (per-queue Redis depth + responsive-worker count, degrades to `null` when no broker/worker answers).
+- **Retention prune** (`app/tasks/maintenance.py`): a daily `prune_scrape_jobs` beat task deletes `ScrapeJob` rows older than `SCRAPE_JOB_RETENTION_DAYS` (new setting, default 7), registered on a static `beat_schedule`.
+- **Frontend Jobs view** (`src/pages/Jobs.tsx`, nav link): a recent-jobs table with status badges, trigger/queue/outcome/retries columns, and a queue-depth summary. A per-product **last-scrape status badge** on the Dashboard rows (`ProductScrapeStatusBadge`), a reusable `ScrapeJobStatusBadge`, `useScrapeJobs`/`useProductScrapeJobs`/`useQueueDepth` hooks, `scrapeJobsApi` client methods, and MSW handlers.
+
+### Changed (Queued-scrape visibility — Item 17)
+
+- **On-demand scrape dispatch carries a `pp_trigger="on_demand"` header** (`api/v1/prices.py`) so the `before_task_publish` signal records the trigger origin; scheduled RedBeat dispatches carry no header and default to `scheduled`. The `ScrapeJobResponse` (202) shape is unchanged — its `task_id` is the join key to the durable job via `GET /scrape-jobs?task_id=…`.
+
 ### Added (Configurable monitoring sources — Item 18)
 
 - **DB-backed `SourcePreset` registry** (`app/models/source_preset.py`, `app/services/source_preset_service.py`, Alembic migration `0007`): a runtime-editable table mapping a `source_type` key to its extraction `strategy`, Celery `queue`, label, host patterns and default selectors. Seeded (idempotently) with six built-ins — `generic`, `amazon`, `ebay`, `currys`, `john_lewis`, `facebook_marketplace`. Replaces the two divergent hardcoded `SourceType` enums; onboarding a UK retailer is now a data change.

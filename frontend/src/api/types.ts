@@ -4,7 +4,15 @@
 export type SourceType = string;
 export type AlertDirection = 'above' | 'below';
 export type NotificationChannel = 'email' | 'webhook' | 'whatsapp';
-export type ExtractionStatus = 'ok' | 'extraction_failed' | 'http_error';
+export type ExtractionStatus =
+  | 'ok'
+  | 'extraction_failed'
+  | 'http_error'
+  | 'blocked'
+  | 'captcha';
+
+export type ScrapeJobStatus = 'queued' | 'started' | 'success' | 'failure';
+export type ScrapeJobTrigger = 'on_demand' | 'scheduled';
 
 export interface SourcePreset {
   key: string;
@@ -94,4 +102,29 @@ export interface ScrapeJobResponse {
   task_id: string;
   status: 'queued';
   product: ProductRead;
+}
+
+export interface ScrapeJobRead {
+  id: number;
+  product_id: number;
+  task_id: string;
+  queue: string;
+  trigger: ScrapeJobTrigger;
+  status: ScrapeJobStatus;
+  extraction_status: ExtractionStatus | null;
+  detail: string | null;
+  retries: number;
+  enqueued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface QueueDepth {
+  queue: string;
+  messages: number | null;
+}
+
+export interface QueueDepthResponse {
+  queues: QueueDepth[];
+  workers_online: number | null;
 }

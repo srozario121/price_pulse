@@ -9,6 +9,9 @@ import type {
   AlertUpdate,
   PaginatedResponse,
   ScrapeJobResponse,
+  ScrapeJobRead,
+  ScrapeJobStatus,
+  QueueDepthResponse,
   SourcePreset,
 } from './types';
 
@@ -68,6 +71,36 @@ export const pricesApi = {
         `/api/v1/products/${productId}/prices`,
         { params }
       )
+      .then((r) => r.data),
+};
+
+export const scrapeJobsApi = {
+  list: (params?: {
+    product_id?: number;
+    status?: ScrapeJobStatus;
+    queue?: string;
+    task_id?: string;
+    limit?: number;
+    offset?: number;
+  }) =>
+    instance
+      .get<PaginatedResponse<ScrapeJobRead>>('/api/v1/scrape-jobs', { params })
+      .then((r) => r.data),
+
+  listForProduct: (
+    productId: number,
+    params?: { limit?: number; offset?: number }
+  ) =>
+    instance
+      .get<PaginatedResponse<ScrapeJobRead>>(
+        `/api/v1/products/${productId}/scrape-jobs`,
+        { params }
+      )
+      .then((r) => r.data),
+
+  queueDepth: () =>
+    instance
+      .get<QueueDepthResponse>('/api/v1/scrape-jobs/queue-depth')
       .then((r) => r.data),
 };
 

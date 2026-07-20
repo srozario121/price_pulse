@@ -158,8 +158,11 @@ class TestTriggerScrape:
         assert data["task_id"] == "test-task-id-abc"
         assert data["status"] == "queued"
         assert data["product"]["id"] == product["id"]
-        # Generic product → default queue.
-        mock_scrape.apply_async.assert_called_once_with((product["id"],), queue="default")
+        # Generic product → default queue; on-demand dispatch carries the
+        # pp_trigger header for ScrapeJob tracking (Item 17).
+        mock_scrape.apply_async.assert_called_once_with(
+            (product["id"],), queue="default", headers={"pp_trigger": "on_demand"}
+        )
 
     @pytest.mark.asyncio
     async def test_scrape_inactive_product_returns_400(self, pg_async_client):

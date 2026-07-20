@@ -13,6 +13,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.models.alert import PriceAlert
     from app.models.price_history import PriceRecord
+    from app.models.scrape_job import ScrapeJob
 
 
 class Product(Base):
@@ -45,6 +46,9 @@ class Product(Base):
     )
     price_alerts: Mapped[list[PriceAlert]] = relationship(
         "PriceAlert", back_populates="product", cascade="all, delete-orphan"
+    )
+    scrape_jobs: Mapped[list[ScrapeJob]] = relationship(
+        "ScrapeJob", back_populates="product", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

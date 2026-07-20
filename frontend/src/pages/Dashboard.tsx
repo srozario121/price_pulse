@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ProductFormDialog } from '@/components/ProductFormDialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ProductScrapeStatusBadge } from '@/components/ProductScrapeStatusBadge';
 import type { ProductRead } from '@/api/types';
 
 
@@ -135,6 +136,7 @@ export function Dashboard() {
                   >
                     {product.is_active ? 'Active' : 'Inactive'}
                   </Badge>
+                  <ProductScrapeStatusBadge productId={product.id} />
                 </div>
               </div>
 

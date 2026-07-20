@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.models.enums import ExtractionStatus
+from app.models.enums import ExtractionStatus, ScrapeJobStatus
 
 
 def test_extraction_status_values() -> None:
@@ -47,3 +47,27 @@ def test_anti_blocking_statuses() -> None:
     assert ExtractionStatus.CAPTCHA == "captcha"
     assert ExtractionStatus("blocked") == ExtractionStatus.BLOCKED
     assert ExtractionStatus("captcha") == ExtractionStatus.CAPTCHA
+
+
+# ── ScrapeJobStatus (Item 17) ──────────────────────────────────────────────────
+
+
+def test_scrape_job_status_values() -> None:
+    assert ScrapeJobStatus.QUEUED == "queued"
+    assert ScrapeJobStatus.STARTED == "started"
+    assert ScrapeJobStatus.SUCCESS == "success"
+    assert ScrapeJobStatus.FAILURE == "failure"
+
+
+def test_scrape_job_status_is_str() -> None:
+    assert isinstance(ScrapeJobStatus.QUEUED, str)
+
+
+def test_scrape_job_status_all_members() -> None:
+    members = {m.value for m in ScrapeJobStatus}
+    assert members == {"queued", "started", "success", "failure"}
+
+
+def test_scrape_job_status_from_string() -> None:
+    assert ScrapeJobStatus("queued") == ScrapeJobStatus.QUEUED
+    assert ScrapeJobStatus("failure") == ScrapeJobStatus.FAILURE
