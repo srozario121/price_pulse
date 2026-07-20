@@ -154,6 +154,11 @@ export const handlers = [
 
   http.get('/api/v1/products/:id/scrape-jobs', ({ params }) => {
     const id = Number(params.id);
+    // Match production: the endpoint 404s for an absent product (mock products
+    // are 1/2/3, mirroring the /products/:id handler convention).
+    if (![1, 2, 3].includes(id)) {
+      return HttpResponse.json({ detail: 'Not found' }, { status: 404 });
+    }
     const items = mockScrapeJobs.filter((j) => j.product_id === id);
     const response: PaginatedResponse<ScrapeJobRead> = {
       items,

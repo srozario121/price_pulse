@@ -38,9 +38,10 @@ from typing import Any
 
 import structlog
 from celery.signals import before_task_publish, task_postrun, task_prerun
-from sqlalchemy import create_engine, update
+from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.engine import Engine
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -117,9 +118,15 @@ def handle_publish(
     Idempotent via ``ON CONFLICT (task_id) DO NOTHING`` so a retried / redelivered
     task never duplicates the row. An insert for an already-deleted ``product_id``
     raises an FK ``IntegrityError`` here, which the guarded wrapper swallows.
+
+    The insert construct is chosen from the session's bound dialect so the upsert
+    works on Postgres (production) and SQLite alike; both dialects implement
+    ``on_conflict_do_nothing``. Defaults to Postgres when no bind is inspectable
+    (e.g. the fake session in unit tests, which only records the statement).
     """
+    insert = _insert_for(session)
     stmt = (
-        pg_insert(ScrapeJob)
+        insert(ScrapeJob)
         .values(
             product_id=product_id,
             task_id=task_id,
@@ -131,6 +138,19 @@ def handle_publish(
         .on_conflict_do_nothing(index_elements=["task_id"])
     )
     session.execute(stmt)
+
+
+def _insert_for(session: Session) -> Any:  # noqa: ANN401 — dialect insert constructor
+    """Return the dialect-specific ``insert`` for *session* (Postgres default).
+
+    Keeps ``handle_publish`` working on both Postgres and SQLite without the
+    handler having to know which DB it is writing to; when the session exposes no
+    bind/dialect (the unit-test fake session) it falls back to the Postgres
+    construct, which those tests only record rather than execute.
+    """
+    bind = getattr(session, "bind", None)
+    dialect = getattr(getattr(bind, "dialect", None), "name", "postgresql")
+    return sqlite_insert if dialect == "sqlite" else pg_insert
 
 
 def handle_prerun(
