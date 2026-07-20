@@ -93,11 +93,16 @@ eslint_max_warnings = 0
 # upsert path — distinct behaviours (FK-swallow vs idempotent republish) sharing the same
 # handler lines, the "different behaviours sharing an execution path" case the gate
 # re-baselines for. Captured on the CI runtime — Python 3.12.
-baseline_backend_duplicate_lines = 1169
+#
+# Nudged 2026-07-20 backend (1169 -> 1173): Item 17 Copilot-review fix. Making the
+# ScrapeJob upsert dialect-aware added a small `_insert_for` helper on the shared
+# handle_publish path, so the several integration tests that publish a job now
+# re-cover those few extra lines (integration 314 -> 318) — same shared-path case.
+baseline_backend_duplicate_lines = 1173
 baseline_frontend_duplicate_lines = 1229
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
-max_intra_tier_duplicate_lines_backend = 1169
+max_intra_tier_duplicate_lines_backend = 1173
 max_intra_tier_duplicate_lines_frontend = 1229
