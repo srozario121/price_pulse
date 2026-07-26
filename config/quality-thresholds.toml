@@ -98,11 +98,33 @@ eslint_max_warnings = 0
 # ScrapeJob upsert dialect-aware added a small `_insert_for` helper on the shared
 # handle_publish path, so the several integration tests that publish a job now
 # re-cover those few extra lines (integration 314 -> 318) — same shared-path case.
-baseline_backend_duplicate_lines = 1173
+#
+# Re-baselined 2026-07-26 backend (1173 -> 1664): Item 16 self-healing selectors. The
+# increase is concentrated entirely in the modules this item adds or changes —
+# selector_profile_service (96 lines), selector_generation (89), llm/client (56),
+# tasks/selector (55), plus generic/amazon (the new learned-selector layer) and
+# core/config + core/exceptions (the shared Azure rule and the 422 serialisation fix).
+# The pattern is the one this gate re-baselines for, "different behaviours sharing an
+# execution path", in three shapes:
+#   * the store/profile tests each assert a distinct lifecycle transition (create,
+#     demote, budget exhaustion, promotion, revive) but all re-run the same
+#     get_or_create + flush lines;
+#   * the regeneration-task tests each assert a distinct outcome (promoted, cooldown,
+#     disabled, unusable-page, generation-failed, validation-failed) but all re-run the
+#     same task entry/guard/commit path;
+#   * the credential-API integration tests each assert a distinct rejection or storage
+#     property but all re-run the same route + encrypt/decrypt lines against real
+#     Postgres — the "endpoint needs a live DB, each scenario re-runs the route" case
+#     already re-baselined for /products/failing.
+# Frontend is unchanged at 1229: Item 16 is backend-only. Captured on the CI runtime
+# (Python 3.12) — the local count is NOT comparable (it reports ~17 on Python 3.14,
+# where different async/Docker-dependent tests run and coverage attributes lines
+# differently), so this figure must be read off the CI Quality job log.
+baseline_backend_duplicate_lines = 1664
 baseline_frontend_duplicate_lines = 1229
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
-max_intra_tier_duplicate_lines_backend = 1173
+max_intra_tier_duplicate_lines_backend = 1664
 max_intra_tier_duplicate_lines_frontend = 1229
