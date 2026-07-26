@@ -434,17 +434,25 @@ Arrange-Assert-Act for all backend tests.
 
 ---
 
-## 16. Handle Selector Drift — LLM-Generated Self-Healing Selectors
+## 16. Handle Selector Drift — LLM-Generated Self-Healing Selectors (Pydantic AI, Multi-Provider, BYO Key)
 
 DOM price extraction (added 2026-07-12) depends on a hardcoded, ordered list of Amazon
 CSS selectors (`amazon.py` `_DOM_PRICE_SCRIPT`). Amazon rotates its markup periodically,
 so all selectors can go stale at once — silently degrading every Amazon product to
 `extraction_failed` while the page itself loads fine (HTTP 200, real title). Rather than
-hand-maintain selector lists, **let Claude generate the selector**: when extraction can't
+hand-maintain selector lists, **let an LLM generate the selector**: when extraction can't
 find a price on a page that loaded fine, an LLM examines the (trimmed) HTML and produces a
 reusable CSS selector, which is validated, persisted per host, and reused on subsequent
 scrapes with **no** further LLM calls. Drift self-heals; a hardcoded list is no longer the
 single point of failure.
+
+The LLM is accessed through **Pydantic AI** as a provider-agnostic framework so the same
+generation code runs against **OpenAI, Anthropic, Azure OpenAI, or OpenRouter** — selected
+by config, not by a code change. Two credential paths exist (the repo has **no auth/user
+system** yet, so these are deliberately lightweight): an **env-configured "admin default"
+LLM** (the deployer's key, used for all hosts) and an **external "bring-your-own" (BYO) key
+supplied per product**, stored encrypted at rest and used in preference to the admin default
+when present.
 
 **Motivation**: the 2026-07-12 fix works today but is brittle by construction; a markup
 change is a *when*, not an *if*. A "page loaded, title present, no price matched" outcome
@@ -473,19 +481,21 @@ raised for a genuinely-loaded, non-blocked page. This item also extends the same
 
 - **Approach — LLM-generated, self-healing selectors (not hand-maintained lists)**: when deterministic extraction fails on a loaded page, Claude generates a CSS selector from the page HTML; the selector is validated and cached for reuse. Rationale: markup drift is inevitable; generation-on-drift removes the ongoing maintenance burden and the single-point-of-failure of a static selector list.
 
-- **Page representation — trimmed HTML + structured output**: the generator strips `<script>`/`<style>`/`<svg>`/comments and caps the payload (`SELECTOR_HTML_MAX_BYTES`), then sends the cleaned HTML to Claude and receives a **validated** result via structured output (`client.messages.parse()` / `output_config.format`) — a small schema `{price_selector, currency_selector?, confidence}`. Rationale: cheapest and most deterministic path; reuses HTML the scraper already fetches; no vision cost; structured output guarantees a parseable selector without prompt-scraping.
+- **Page representation — trimmed HTML + structured output**: the generator strips `<script>`/`<style>`/`<svg>`/comments and caps the payload (`SELECTOR_HTML_MAX_BYTES`), then sends the cleaned HTML to the configured LLM and receives a **validated** result via Pydantic AI structured output (`Agent(..., output_type=SelectorSuggestion)`) — a small Pydantic model `{price_selector, currency_selector?, confidence}`. Rationale: cheapest and most deterministic path; reuses HTML the scraper already fetches; no vision cost; `output_type` guarantees a schema-validated selector across every provider without provider-specific parsing code.
 
 - **Selector store — DB-backed, per host, versioned, runtime-editable**: a new `SelectorProfile` table keyed by **host** (`amazon.co.uk` and `amazon.com` are distinct — the 2026-07-12 investigation showed regional markup differs), carrying `host`, `source_type`, `price_selector`, `currency_selector`, `status` (`active`/`stale`/`failed`), `version`, `confidence`, `generated_at`, `last_validated_at`, and generation metadata. Alembic migration required. Rationale: selectors are reusable across all products on a host; DB storage makes them queryable, versioned, and editable at runtime without a redeploy (supersedes the original "externalise to a config file" idea).
 
-- **Auth — `ANTHROPIC_API_KEY` via `Settings`/env**: add `ANTHROPIC_API_KEY` (and `ANTHROPIC_MODEL`, default `claude-opus-4-8`) to `core/config.py`; inject the key via `.env`/secrets into the backend **and** the `celery-playwright` worker (which runs generation). A bare `AsyncAnthropic()` reads it from the environment. Rationale: standard for a containerised app; the key is documented in `.env.example` and never committed; `ANTHROPIC_MODEL` makes the tier swappable (e.g. to a cheaper model) without a code change.
+- **LLM framework — Pydantic AI, provider-agnostic**: selector generation goes through Pydantic AI rather than a raw provider SDK, so **OpenAI / Anthropic / Azure OpenAI / OpenRouter** are all reachable through one code path. Provider + model resolve to a Pydantic AI model string / `Model`+`Provider` pair (`openai:…`, `anthropic:…`, Azure via `AzureProvider`/`AsyncAzureOpenAI`, `openrouter:…`); the BYO path constructs the `Model`/`Provider` with an explicit `api_key` and uses Pydantic AI's per-run `model=` override so one long-lived `Agent` serves every provider. Rationale: onboarding a new provider is a config/string change, not new SDK-wiring; `output_type` gives uniform validated output; per-run model override supports BYO keys without rebuilding the agent. (Note: this deliberately supersedes the earlier `anthropic`-SDK-only design.)
 
-- **Model + call shape — `claude-opus-4-8`, single structured call**: selector generation is a single `messages.parse()` call with a modest `max_tokens`, no agent loop and no tools. Generation is infrequent (once per host, then cached), so Opus-tier cost is acceptable; the `ANTHROPIC_MODEL` setting allows dropping to a cheaper model if volume grows. Rationale: the task is a one-shot extraction, the simplest LLM tier.
+- **Credentials — env "admin default" + per-product encrypted BYO (no auth system yet)**: the repo has no users/roles, so credentials are scoped without one. An env-configured **admin default** (`LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, plus `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_VERSION` when the provider is Azure) in `core/config.py` `Settings` is injected into the backend **and** the `celery-playwright` worker (which runs generation). External users **bring their own key per product**: it is submitted via the API, **encrypted at rest** (Fernet keyed off the already-validated `SECRET_KEY`) in a new `ProductLLMCredential` row, and **decrypted only at generation time** — never logged, never returned in an API response (write-only, like the Item 15 proxy secrets). **Resolution order at generation time**: product BYO credential → env admin default → `None` (generation disabled, graceful fallback). Rationale: ships the feature without a user/auth subsystem (deferred); the per-product surface is the only ownership boundary that exists today; Fernet-at-rest keeps user keys out of plaintext and out of responses.
+
+- **Model + call shape — default OpenAI, single structured call**: the shipped `LLM_PROVIDER` default is `openai` with an env-overridable `LLM_MODEL` (documented current OpenAI model in `.env.example`); any of the four providers is selectable by env. Generation is a single Pydantic AI `agent.run(...)` (no tools, no multi-step loop) with a modest token cap. Generation is infrequent (once per host, then cached), so model tier is not cost-critical and is fully swappable via `LLM_MODEL` / a BYO credential's `model`. Rationale: the task is a one-shot extraction — the simplest possible agent shape; provider/model are data, not code.
 
 - **Regeneration execution — async, validate, then promote**: on a `selector_miss` (or a user report), a Celery task regenerates the host's selector **off the scrape path**; the old/hardcoded selector keeps serving meanwhile. A newly-generated selector is **validated** (must extract a plausible numeric price on the current page via the existing `_normalize_price_text`) before it is persisted and promoted to `active`. Bounded attempts (`SELECTOR_MAX_REGEN_ATTEMPTS`) + per-host cooldown (`SELECTOR_REGEN_COOLDOWN_HOURS`) prevent a permanently-broken page from hammering the API. Rationale: keeps scrape latency and correctness decoupled from Anthropic availability; only validated selectors ever go live.
 
 - **Regeneration trigger — first `selector_miss` for a host, plus user report**: a single `selector_miss` for a host marks its profile `stale` and enqueues regeneration (subject to cooldown); a user "report issue" does the same immediately. Rationale: fastest self-heal; the cooldown + bounded attempts prevent churn, so an aggregate threshold/window isn't needed. (A periodic canary scrape is a possible future safety net but is out of scope here.)
 
-- **Scope + graceful fallback — Amazon + generic, Anthropic optional at runtime**: both source types can use a stored LLM selector. Extraction order — Amazon: `ld+json` → stored active selector → legacy hardcoded `_DOM_PRICE_SCRIPT` list → `selector_miss`; generic: product `css_selector` (if set) → stored active host selector → `selector_miss`. If `ANTHROPIC_API_KEY` is unset or generation fails, extraction falls back to today's behaviour and records `selector_miss` — it **never crashes**. Rationale: the new capability is additive; the current working Amazon path stays as a safety net and the `anthropic` dependency is effectively optional at runtime.
+- **Scope + graceful fallback — Amazon + generic, LLM optional at runtime**: both source types can use a stored LLM selector. Extraction order — Amazon: `ld+json` → stored active selector → legacy hardcoded `_DOM_PRICE_SCRIPT` list → `selector_miss`; generic: product `css_selector` (if set) → stored active host selector → `selector_miss`. If no LLM credential resolves (no product BYO key **and** no env admin default) or generation fails, extraction falls back to today's behaviour and records `selector_miss` — it **never crashes**. Rationale: the new capability is additive; the current working Amazon path stays as a safety net and the LLM (any provider) is effectively optional at runtime.
 
 - **`selector_miss` extraction status**: add `SELECTOR_MISS = "selector_miss"` to `ExtractionStatus` — HTTP 200, **not** classified as a block/CAPTCHA (Item 15), a plausible product title/content present, but no selector matched a price. No Alembic migration (string column, as in Item 15). Rationale: distinguishes drift from `http_error` (transient), `extraction_failed` (parse error), and `BLOCKED`/`CAPTCHA` (Item 15) so monitoring and the regen trigger can act on it specifically.
 
@@ -496,8 +506,15 @@ raised for a genuinely-loaded, non-blocked page. This item also extends the same
 ### Tasks
 
 **Config + dependency**
-- [ ] Add `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (default `claude-opus-4-8`), `SELECTOR_HTML_MAX_BYTES`, `SELECTOR_MAX_REGEN_ATTEMPTS`, `SELECTOR_REGEN_COOLDOWN_HOURS` to `core/config.py` `Settings`; document each in `.env.example` (note the key must never be committed; empty key disables LLM generation).
-- [ ] Add `anthropic` to `backend/pyproject.toml` dependencies.
+- [ ] Add the admin-default LLM settings to `core/config.py` `Settings`: `LLM_PROVIDER` (default `openai`; one of `openai`/`anthropic`/`azure`/`openrouter`, validated), `LLM_MODEL` (default a current OpenAI model string), `LLM_API_KEY` (empty ⇒ admin-default generation disabled), and Azure-only `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_VERSION`. Add `SELECTOR_HTML_MAX_BYTES`, `SELECTOR_MAX_REGEN_ATTEMPTS`, `SELECTOR_REGEN_COOLDOWN_HOURS`. Document each in `.env.example` (keys never committed; empty `LLM_API_KEY` disables the admin default; note provider→required-vars matrix, esp. Azure).
+- [ ] Add `pydantic-ai` (or `pydantic-ai-slim` with the `openai` + `anthropic` extras — Azure & OpenRouter ride the OpenAI-compatible provider, so the `openai` extra covers them) and `cryptography` (Fernet, if not already transitive) to `backend/pyproject.toml`. Inject `LLM_*` into the backend **and** `celery-playwright` worker.
+
+**LLM client abstraction (Pydantic AI)**
+- [ ] Create `services/llm/` (e.g. `client.py` + `schemas.py`): a `SelectorSuggestion` Pydantic `output_type` `{price_selector, currency_selector?, confidence}`; a `resolve_llm_config(product)` returning the effective `(provider, model, api_key, azure_*)` via **product BYO → env admin default → None**; and a `build_agent(config)` that constructs the Pydantic AI `Model`/`Provider` for the resolved provider (OpenAI / Anthropic / Azure via `AzureProvider` / OpenRouter) with an explicit `api_key`. `None` config ⇒ generation disabled (returns `None`, never raises).
+
+**Per-product BYO credential (encrypted at rest)**
+- [ ] Create the `ProductLLMCredential` model (`models/`) — `product_id` (FK, unique), `provider`, `model`, `encrypted_api_key`, optional `azure_endpoint`/`azure_api_version`; add an Alembic migration. A Fernet helper (`core/crypto.py`) derives the key from `SECRET_KEY`; encrypt on write, decrypt only in `resolve_llm_config`. The key is **never** returned by any endpoint.
+- [ ] Endpoints on `api/v1/products.py`: `PUT /products/{id}/llm-credential` (set/replace provider+model+api_key [+azure fields]; provider validated to the 4; 404 unknown product; returns masked metadata, never the key), `GET /products/{id}/llm-credential` (provider/model/`has_key` masked), `DELETE /products/{id}/llm-credential` (revert to admin default). New `ProductLLMCredentialWrite`/`Read` schemas (Read omits the secret).
 
 **Selector store**
 - [ ] Create the `SelectorProfile` model (`models/`) keyed by `host`, versioned, with `status`/`confidence`/`generated_at`/`last_validated_at`/metadata; add an Alembic migration.
@@ -507,7 +524,7 @@ raised for a genuinely-loaded, non-blocked page. This item also extends the same
 - [ ] Add `SELECTOR_MISS = "selector_miss"` to `ExtractionStatus` (`models/enums.py`); no DB migration (string column). Confirm no CHECK constraint on `price_records.extraction_status`.
 
 **Selector-generation service**
-- [ ] Create `services/selector_generation.py`: trim HTML (strip scripts/styles/svg/comments, cap at `SELECTOR_HTML_MAX_BYTES`), call `AsyncAnthropic().messages.parse()` (model = `ANTHROPIC_MODEL`) with a `{price_selector, currency_selector?, confidence}` schema, and return the parsed result. No API key ⇒ return `None` (generation disabled).
+- [ ] Create `services/selector_generation.py`: trim HTML (strip scripts/styles/svg/comments, cap at `SELECTOR_HTML_MAX_BYTES`), resolve the LLM config for the product (`resolve_llm_config`), and run one Pydantic AI `agent.run(...)` with `output_type=SelectorSuggestion` (per-run `model=` from the resolved config), returning the validated suggestion. Unresolved config (no BYO key, no admin default) ⇒ return `None` (generation disabled). Provider/auth errors are caught and surfaced as a failed attempt, never a crash.
 - [ ] Validation: a generated selector must extract a plausible numeric price on the current page (reuse `_normalize_price_text`) before it is persisted/promoted; a failed validation counts against `SELECTOR_MAX_REGEN_ATTEMPTS`.
 
 **Wire into extraction (both paths)**
@@ -515,7 +532,7 @@ raised for a genuinely-loaded, non-blocked page. This item also extends the same
 - [ ] `generic.py`: after the product `css_selector`, try the host's stored active selector; non-blocked loaded page with no price ⇒ `SELECTOR_MISS`. Graceful fallback to existing behaviour when generation is unavailable.
 
 **Async regeneration**
-- [ ] `tasks/`: a Celery task that (re)generates a host's selector, validates it, and promotes it — enqueued on the first `selector_miss` for a host and on a user report; honours bounded attempts + per-host cooldown. Runs on the `celery-playwright` worker where the Anthropic key is injected.
+- [ ] `tasks/`: a Celery task that (re)generates a host's selector, validates it, and promotes it — enqueued on the first `selector_miss` for a host and on a user report; honours bounded attempts + per-host cooldown. Runs on the `celery-playwright` worker where the LLM credentials are injected; picks the triggering product's BYO credential (else the admin default) via `resolve_llm_config`.
 
 **Report-issue endpoint**
 - [ ] `POST /api/v1/products/{id}/report-selector-issue` → mark the host profile stale, enqueue regeneration (respecting cooldown), return 202.
@@ -529,33 +546,41 @@ Arrange-Assert-Act for all backend tests.
 
 - **Unit** (`backend/tests/unit/`, isolated):
   - HTML-trim helper strips scripts/styles/svg and caps at `SELECTOR_HTML_MAX_BYTES`.
-  - Selector-generation service with a **mocked** `AsyncAnthropic` — returns the parsed selector on a good schema; returns `None` when the key is unset; a low-`confidence`/invalid selector is rejected by validation.
+  - Selector-generation service driven by Pydantic AI's **`TestModel`/`FunctionModel`** via `agent.override(model=...)` (with `models.ALLOW_MODEL_REQUESTS=False` guarding against real calls) — returns the parsed `SelectorSuggestion` on a good schema; returns `None` when no credential resolves; a low-`confidence`/invalid selector is rejected by validation.
+  - `build_agent` constructs the correct Pydantic AI `Model`/`Provider` per provider (`openai`/`anthropic`/`azure`/`openrouter`), passing the explicit `api_key` and Azure `endpoint`/`api_version`; an unknown provider is rejected.
+  - `resolve_llm_config` resolution order: product BYO credential wins over the env admin default; admin default used when no BYO row; `None` when neither is set.
+  - Fernet crypto helper: encrypt→decrypt round-trips the BYO key; the stored `encrypted_api_key` is not the plaintext; `ProductLLMCredentialRead` never exposes the secret.
   - Extraction against **golden-HTML fixtures**: current Amazon markup extracts `ok`; a deliberately-drifted variant (loaded page, title present, no price) yields `SELECTOR_MISS`, not a crash; a page classified as blocked (Item 15) yields `BLOCKED`/`CAPTCHA`, **not** `SELECTOR_MISS` and **no** regeneration enqueued.
   - Validation helper: a generated selector that extracts a plausible price passes; one that extracts nothing/garbage fails and counts against the attempt budget.
 - **Integration** (`backend/tests/integration/`, real DB):
-  - `SelectorProfile` lifecycle — generate (mocked LLM) → validate → persist `active` → reuse on a second scrape with **no** LLM call; a `selector_miss` marks the profile `stale` and enqueues regeneration; cooldown/bounded-attempts prevent a second enqueue within the window.
+  - `SelectorProfile` lifecycle — generate (Pydantic AI `TestModel`) → validate → persist `active` → reuse on a second scrape with **no** LLM call; a `selector_miss` marks the profile `stale` and enqueues regeneration; cooldown/bounded-attempts prevent a second enqueue within the window.
+  - `ProductLLMCredential` lifecycle against the Postgres testcontainer — `PUT` stores an encrypted key (column ≠ plaintext), `GET` returns masked metadata only, `DELETE` reverts to admin default and generation then resolves the env config.
   - `report-selector-issue` marks the host profile stale and enqueues regeneration; unknown product ⇒ 404.
   - `find_failing_products` over seeded rows surfaces `selector_miss` counts per host/`source_type`.
 - **Negative** (Arrange-Assert-Act):
-  - No `ANTHROPIC_API_KEY` ⇒ scrape still completes with `selector_miss` and no crash; regeneration is a no-op.
-  - Anthropic call raises / times out ⇒ generation task fails gracefully, attempt counted, cooldown applied, old selector still serves.
+  - No resolvable LLM credential (no product BYO key **and** empty `LLM_API_KEY`) ⇒ scrape still completes with `selector_miss` and no crash; regeneration is a no-op.
+  - LLM call raises / times out (any provider) ⇒ generation task fails gracefully, attempt counted, cooldown applied, old selector still serves.
+  - Invalid `LLM_PROVIDER` (or a `PUT /llm-credential` with an unsupported provider) ⇒ Settings validation error at startup / 422 at the API boundary, not a runtime crash mid-scrape.
+  - Azure provider selected without `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_VERSION` ⇒ clear config error, not a partial request.
   - Generation returns an invalid/low-confidence selector, or one that fails validation ⇒ not promoted; profile stays on the previous active/hardcoded selector.
   - `report-selector-issue` within cooldown ⇒ 202 but no duplicate enqueue.
 - **Live E2E** (`@pytest.mark.live_api`, opt-in — excluded from the default run):
-  - A real Amazon scrape whose stored selector is cleared triggers generation through the live Anthropic API, validates, persists, and records `ok`; kept out of CI/default runs (external dependency + API cost).
+  - A real Amazon scrape whose stored selector is cleared triggers generation through a live LLM provider (default OpenAI; parametrisable to Anthropic/Azure/OpenRouter when a key is present), validates, persists, and records `ok`; kept out of CI/default runs (external dependency + API cost).
 
 ### Documentation
-- **`core/config.py` / `.env.example`** — update: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `SELECTOR_HTML_MAX_BYTES`, `SELECTOR_MAX_REGEN_ATTEMPTS`, `SELECTOR_REGEN_COOLDOWN_HOURS` (key never committed; empty key disables generation).
-- **`backend/pyproject.toml`** — update: add `anthropic`.
-- **`models/` + Alembic** — create: `SelectorProfile` model + migration.
+- **`core/config.py` / `.env.example`** — update: `LLM_PROVIDER` (default `openai`), `LLM_MODEL`, `LLM_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION`, `SELECTOR_HTML_MAX_BYTES`, `SELECTOR_MAX_REGEN_ATTEMPTS`, `SELECTOR_REGEN_COOLDOWN_HOURS` (keys never committed; empty `LLM_API_KEY` disables the admin default; provider→required-vars matrix incl. Azure).
+- **`backend/pyproject.toml`** — update: add `pydantic-ai` (or `pydantic-ai-slim[openai,anthropic]`) and `cryptography`.
+- **`core/crypto.py`** — create: Fernet helper (key derived from `SECRET_KEY`) for the BYO credential.
+- **`services/llm/`** — create: `SelectorSuggestion` output type, `resolve_llm_config` (BYO → admin default → None), `build_agent` (OpenAI/Anthropic/Azure/OpenRouter via Pydantic AI).
+- **`models/` + Alembic** — create: `SelectorProfile` model + migration; `ProductLLMCredential` model (encrypted key) + migration.
 - **`models/enums.py`** — update: `SELECTOR_MISS` status.
-- **`services/selector_generation.py`** — create: trim-HTML + `messages.parse()` generator + validation.
+- **`services/selector_generation.py`** — create: trim-HTML + Pydantic AI `agent.run(output_type=SelectorSuggestion)` generator + validation.
 - **`scrapers/amazon.py`, `scrapers/generic.py`** — update: stored-selector extraction layer + `selector_miss`, gated on Item 15's block classifier.
-- **`tasks/`** — create: async regeneration task (bounded attempts + cooldown).
-- **`api/v1/products.py`, `schemas/product.py`, `services/monitoring_service.py`** — update: `report-selector-issue` endpoint + `selector_miss` breakdown on `/products/failing`.
-- **`docs/decisions/`** — add ADR: LLM-generated self-healing selectors (per-host DB store, trimmed-HTML + structured-output generation, async validate-then-promote, `ANTHROPIC_API_KEY` auth, graceful fallback, `selector_miss` taxonomy vs Item 15).
-- **`CLAUDE.md`** — update: environment-variables table (`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, selector-regen settings); note the new `selector_miss` status and the `report-selector-issue` endpoint.
-- **`CHANGELOG.md`** — add `### Added` entry: LLM-generated self-healing price selectors (per-host DB-backed selector store, drift-triggered async regeneration with validation, `selector_miss` status, report-issue endpoint).
+- **`tasks/`** — create: async regeneration task (bounded attempts + cooldown; resolves triggering product's credential).
+- **`api/v1/products.py`, `schemas/product.py`, `services/monitoring_service.py`** — update: `report-selector-issue` endpoint; `PUT`/`GET`/`DELETE /products/{id}/llm-credential` + `ProductLLMCredentialWrite`/`Read` schemas; `selector_miss` breakdown on `/products/failing`.
+- **`docs/decisions/`** — add ADR: LLM-generated self-healing selectors (per-host DB store, trimmed-HTML + `output_type` generation, async validate-then-promote, **Pydantic AI multi-provider** — OpenAI/Anthropic/Azure/OpenRouter, env admin-default + per-product **encrypted BYO** credentials with auth deferred, graceful fallback, `selector_miss` taxonomy vs Item 15).
+- **`CLAUDE.md`** — update: environment-variables table (`LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, Azure vars, selector-regen settings); note the new `selector_miss` status, the `report-selector-issue` and `llm-credential` endpoints, and the Pydantic AI provider-agnostic generation path.
+- **`CHANGELOG.md`** — add `### Added` entry: LLM-generated self-healing price selectors (Pydantic AI multi-provider generation — OpenAI/Anthropic/Azure/OpenRouter; env admin-default + per-product encrypted BYO API key; per-host DB-backed selector store; drift-triggered async regeneration with validation; `selector_miss` status; report-issue endpoint).
 
 ---
 
