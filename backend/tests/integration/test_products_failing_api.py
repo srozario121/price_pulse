@@ -240,6 +240,50 @@ class TestListFailingProducts:
         assert body["blocked_count"] == 1
         assert body["captcha_count"] == 1
 
+    @pytest.mark.asyncio
+    async def test_selector_miss_gets_its_own_category_and_count(self, pg_async_client, pg_engine):
+        # Arrange (Item 16): drift is bucketed separately from anti-blocking,
+        # because the remedy differs — regenerate the selector vs rotate proxies.
+        cases = [
+            ("https://drift-a.example.com/w", "selector_miss"),
+            ("https://drift-b.example.com/w", "selector_miss"),
+            ("https://blocked.example.com/w", "blocked"),
+        ]
+        for url, status in cases:
+            product = await _create_product(pg_async_client, {**PRODUCT_PAYLOAD, "url": url})
+            await _seed_record(
+                pg_engine, product["id"], status=status, captured_at="2026-04-01T10:00:00Z"
+            )
+
+        # Act
+        resp = await pg_async_client.get("/api/v1/products/failing", params={"min_failures": 1})
+
+        # Assert
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        categories = [item["failure_category"] for item in body["items"]]
+        assert categories.count("selector_miss") == 2
+        assert body["selector_miss_count"] == 2
+        assert body["blocked_count"] == 1
+        assert body["captcha_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_each_item_carries_its_normalised_selector_host(self, pg_async_client, pg_engine):
+        # Arrange — the host is the unit a selector heal acts on, so it is
+        # surfaced per item rather than leaving the caller to parse URLs
+        product = await _create_product(
+            pg_async_client, {**PRODUCT_PAYLOAD, "url": "https://www.Currys.co.uk/products/x"}
+        )
+        await _seed_record(
+            pg_engine, product["id"], status="selector_miss", captured_at="2026-04-01T10:00:00Z"
+        )
+
+        # Act
+        resp = await pg_async_client.get("/api/v1/products/failing", params={"min_failures": 1})
+
+        # Assert — lower-cased, "www." stripped, matching the profile key
+        assert resp.json()["items"][0]["host"] == "currys.co.uk"
+
 
 # ── monitoring_service.find_failing_products (direct) ───────────────────────────
 

@@ -34,20 +34,41 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
+def _serialisable_errors(errors: list[dict]) -> list[dict]:
+    """Return *errors* with any non-JSON-serialisable ``ctx`` values stringified.
+
+    When a request schema raises ``ValueError`` from a custom field/model
+    validator, Pydantic v2 puts the **exception object** in ``ctx["error"]``.
+    Passing that straight to ``JSONResponse`` raises ``TypeError: Object of type
+    ValueError is not JSON serializable``, turning an intended 422 into a 500.
+    The human-readable text is already in ``msg``, so stringifying ``ctx`` loses
+    nothing and keeps the response shape stable.
+    """
+    cleaned: list[dict] = []
+    for error in errors:
+        item = dict(error)
+        ctx = item.get("ctx")
+        if isinstance(ctx, dict):
+            item["ctx"] = {key: str(value) for key, value in ctx.items()}
+        cleaned.append(item)
+    return cleaned
+
+
 async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
     """Handle Pydantic / FastAPI request-validation failures (422)."""
+    errors = _serialisable_errors(exc.errors())
     logger.warning(
         "validation_error",
-        errors=exc.errors(),
+        errors=errors,
         path=request.url.path,
         method=request.method,
     )
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors()},
+        content={"detail": errors},
     )
 
 

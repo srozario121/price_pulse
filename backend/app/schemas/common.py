@@ -28,15 +28,19 @@ class PaginatedResponse[T](BaseModel):
 
 
 class FailingProductsResponse(PaginatedResponse[FailingProductRead]):
-    """``GET /products/failing`` envelope with anti-blocking aggregate counts.
+    """``GET /products/failing`` envelope with failure-category aggregate counts.
 
-    Extends the standard pagination envelope with ``blocked_count`` /
-    ``captcha_count`` — totals across *all* flagged products (not just the current
-    page) — so a block/CAPTCHA spike is visible at a glance (Item 15).
+    Extends the standard pagination envelope with per-category totals across
+    *all* flagged products (not just the current page), so a spike is visible at a
+    glance: ``blocked_count`` / ``captcha_count`` for anti-blocking (Item 15) and
+    ``selector_miss_count`` for markup drift (Item 16). They are separate fields
+    because they call for different responses — rotate proxies vs regenerate the
+    host's selector.
     """
 
     blocked_count: int
     captcha_count: int
+    selector_miss_count: int
 
 
 class ScrapeJobResponse(BaseModel):

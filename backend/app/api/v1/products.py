@@ -8,9 +8,17 @@ GET    /products/failing      → 200 PaginatedResponse     products with all-fa
 GET    /products/{id}         → 200 ProductRead           retrieve
 PATCH  /products/{id}         → 200 ProductRead           partial update
 DELETE /products/{id}         → 204 No Content            delete + cascade
+
+Self-healing selectors (Item 16)
+PUT    /products/{id}/llm-credential       → 200 ProductLLMCredentialRead  set/replace BYO key
+GET    /products/{id}/llm-credential       → 200 ProductLLMCredentialRead  masked metadata
+DELETE /products/{id}/llm-credential       → 204 No Content                revert to admin default
+POST   /products/{id}/report-selector-issue → 202 Accepted                 force a selector heal
 """
 
 from __future__ import annotations
+
+from collections import Counter
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -21,14 +29,21 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.product import Product
 from app.schemas.common import FailingProductsResponse, PaginatedResponse
+from app.schemas.llm_credential import ProductLLMCredentialRead, ProductLLMCredentialWrite
 from app.schemas.product import (
     FailingProductRead,
     ProductCreate,
     ProductRead,
     ProductUpdate,
+    SelectorIssueReportRead,
 )
 from app.scrapers.registry import queue_for_source_type
-from app.services import monitoring_service, source_preset_service
+from app.services import (
+    llm_credential_service,
+    monitoring_service,
+    selector_profile_service,
+    source_preset_service,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -74,6 +89,28 @@ async def _assert_source_type_valid(source_type: str, db: AsyncSession) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Unknown or disabled source_type: {source_type!r}",
         )
+
+
+def _enqueue_regeneration_best_effort(product_id: int, host: str) -> bool:
+    """Dispatch selector regeneration; return whether the dispatch succeeded.
+
+    Best-effort like the schedule hooks: the profile is already marked stale in
+    the DB, so a broker hiccup here costs a delayed heal — the next
+    ``selector_miss`` re-enqueues — and must not 500 a user's report.
+    """
+    from app.tasks.selector import regenerate_selector
+
+    try:
+        regenerate_selector.apply_async(args=[product_id], queue="playwright")
+        return True
+    except Exception as exc:  # noqa: BLE001 — best-effort; log and continue
+        logger.warning(
+            "selector_regeneration_enqueue_failed",
+            product_id=product_id,
+            host=host,
+            error=str(exc),
+        )
+        return False
 
 
 def _deregister_schedule_best_effort(product_id: int) -> None:
@@ -194,8 +231,10 @@ async def list_failing_products(
 
     Paginated: `total` is the full count of flagging products; `items` is the
     requested `limit`/`offset` slice. `limit` is bounded to ≤ 100 so the response
-    envelope stays valid however many products are failing at once. `blocked_count`
-    / `captcha_count` are anti-blocking aggregates across all flagged products.
+    envelope stays valid however many products are failing at once.
+    `blocked_count` / `captcha_count` (anti-blocking) and `selector_miss_count`
+    (markup drift) are aggregates across all flagged products, kept separate
+    because each calls for a different response.
     """
     failing = await monitoring_service.find_failing_products(db, min_failures=min_failures)
     page = failing[offset : offset + limit]
@@ -206,18 +245,19 @@ async def list_failing_products(
             latest_captured_at=f.latest_captured_at,
             last_success_at=f.last_success_at,
             failure_category=f.failure_category,
+            host=f.host,
         )
         for f in page
     ]
-    blocked_count = sum(1 for f in failing if f.failure_category == "blocked")
-    captcha_count = sum(1 for f in failing if f.failure_category == "captcha")
+    counts = Counter(f.failure_category for f in failing)
     return FailingProductsResponse(
         items=items,
         total=len(failing),
         limit=limit,
         offset=offset,
-        blocked_count=blocked_count,
-        captcha_count=captcha_count,
+        blocked_count=counts["blocked"],
+        captcha_count=counts["captcha"],
+        selector_miss_count=counts["selector_miss"],
     )
 
 
@@ -294,3 +334,94 @@ async def delete_product(
     await db.execute(delete(Product).where(Product.id == product_id))
     _deregister_schedule_best_effort(product_id)
     logger.info("product_deleted", product_id=product_id)
+
+
+# ── Self-healing selectors (Item 16) ──────────────────────────────────────────
+
+
+@router.put(
+    "/{product_id}/llm-credential",
+    response_model=ProductLLMCredentialRead,
+    summary="Set or replace this product's bring-your-own LLM credential",
+)
+async def put_llm_credential(
+    product_id: int,
+    body: ProductLLMCredentialWrite,
+    db: AsyncSession = Depends(get_db),
+) -> ProductLLMCredentialRead:
+    """Store an LLM credential used for this product's selector generation.
+
+    The key is encrypted at rest and is **never** returned by any endpoint — the
+    response carries provider/model and a masked hint only. Replaces any existing
+    credential wholesale. Takes precedence over the env admin default.
+    """
+    await _get_product_or_404(product_id, db)
+    credential = await llm_credential_service.upsert_credential(db, product_id, body)
+    return llm_credential_service.to_read_schema(credential)
+
+
+@router.get(
+    "/{product_id}/llm-credential",
+    response_model=ProductLLMCredentialRead,
+    summary="Retrieve this product's LLM credential metadata (never the key)",
+)
+async def get_llm_credential(
+    product_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> ProductLLMCredentialRead:
+    await _get_product_or_404(product_id, db)
+    credential = await llm_credential_service.get_credential(db, product_id)
+    if credential is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Product {product_id} has no LLM credential",
+        )
+    return llm_credential_service.to_read_schema(credential)
+
+
+@router.delete(
+    "/{product_id}/llm-credential",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete this product's LLM credential (revert to the admin default)",
+)
+async def delete_llm_credential(
+    product_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    await _get_product_or_404(product_id, db)
+    if not await llm_credential_service.delete_credential(db, product_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Product {product_id} has no LLM credential",
+        )
+
+
+@router.post(
+    "/{product_id}/report-selector-issue",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=SelectorIssueReportRead,
+    summary="Report a wrong/missing price so the host's selector is regenerated",
+)
+async def report_selector_issue(
+    product_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> SelectorIssueReportRead:
+    """Flag this product's host selector as stale and enqueue regeneration.
+
+    Always 202: a report inside the per-host cooldown window is accepted but does
+    not enqueue duplicate work, and the response says which of the two happened.
+    A report also clears a spent attempt budget — a human asserting the price is
+    wrong is exactly the signal that should revive a host parked as `failed`.
+    """
+    product = await _get_product_or_404(product_id, db)
+    host = selector_profile_service.host_for_url(product.url)
+    profile, allowed = await selector_profile_service.revive_for_report(
+        db, host, str(product.source_type)
+    )
+    enqueued = allowed and _enqueue_regeneration_best_effort(product_id, host)
+    return SelectorIssueReportRead(
+        product_id=product_id,
+        host=host,
+        status=profile.status,
+        regeneration_enqueued=enqueued,
+    )

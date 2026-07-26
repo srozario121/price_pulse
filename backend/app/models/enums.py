@@ -15,6 +15,26 @@ class ExtractionStatus(enum.StrEnum):
     # here needs no migration (see migration 0006).
     BLOCKED = "blocked"  # 429/503 or IP-ban markers after proxy rotations are exhausted
     CAPTCHA = "captcha"  # a robot-check interstitial (often served with HTTP 200)
+    # Selector drift (Item 16): HTTP 200, not a block/CAPTCHA, real page content —
+    # but no selector matched a price. Distinct from EXTRACTION_FAILED (a price was
+    # found but could not be parsed) because only a *miss* means the markup moved,
+    # and only a miss should trigger LLM selector regeneration.
+    SELECTOR_MISS = "selector_miss"
+
+
+class SelectorProfileStatus(enum.StrEnum):
+    """Lifecycle status of a per-host LLM-generated selector profile (Item 16).
+
+    ``ACTIVE`` selectors are used by the extraction paths; ``STALE`` marks a host
+    whose selector just missed and is awaiting regeneration; ``FAILED`` parks a
+    host whose regeneration budget (``SELECTOR_MAX_REGEN_ATTEMPTS``) is spent, so
+    it stops costing LLM calls until an operator reports the issue again.
+    Stored as a plain ``String(20)``, matching the ``extraction_status`` convention.
+    """
+
+    ACTIVE = "active"
+    STALE = "stale"
+    FAILED = "failed"
 
 
 class ScrapeJobStatus(enum.StrEnum):

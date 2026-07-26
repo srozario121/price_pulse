@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.scraper import LearnedSelector
 from app.scrapers.amazon import AmazonScraper
 from app.scrapers.base import BaseScraper
 from app.scrapers.currys import CurrysScraper
@@ -64,8 +65,14 @@ async def get_scraper(
     *,
     css_selector: str | None = None,
     css_selector_currency: str | None = None,
+    learned_selector: LearnedSelector | None = None,
 ) -> BaseScraper:
     """Return a configured scraper for *source_type*, resolved from its preset.
+
+    *learned_selector* is the host's stored LLM-generated selector (Item 16). It
+    is attached to the instance rather than passed to ``__init__`` because the
+    adapters have deliberately different constructor signatures; scrapers that do
+    not support learned selectors simply never read the attribute.
 
     Raises ``UnknownSourceError`` when no *enabled* preset exists for
     *source_type*, or when its preset declares a strategy with no registered
@@ -82,8 +89,11 @@ async def get_scraper(
         )
 
     if preset.strategy in _SELECTOR_STRATEGIES:
-        return scraper_cls(
+        scraper = scraper_cls(
             css_selector=css_selector,
             css_selector_currency=css_selector_currency,
         )
-    return scraper_cls()
+    else:
+        scraper = scraper_cls()
+    scraper.learned_selector = learned_selector
+    return scraper

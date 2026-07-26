@@ -11,10 +11,14 @@ import app.models.alert  # noqa: F401
 import app.models.notification_log  # noqa: F401
 import app.models.price_history  # noqa: F401
 import app.models.product  # noqa: F401
+import app.models.product_llm_credential  # noqa: F401
+import app.models.selector_profile  # noqa: F401
 from app.models.alert import AlertDirection, PriceAlert
 from app.models.notification_log import NotificationLog, NotificationStatus
 from app.models.price_history import PriceRecord
 from app.models.product import Product
+from app.models.product_llm_credential import ProductLLMCredential
+from app.models.selector_profile import SelectorProfile
 
 
 class TestModelRepr:
@@ -47,3 +51,28 @@ class TestModelRepr:
         # Act / Assert
         assert "9" in repr(log)
         assert "sent" in repr(log)
+
+    def test_selector_profile_repr_includes_host_and_version(self):
+        # Arrange
+        profile = SelectorProfile(id=2, host="amazon.co.uk", status="active", version=3)
+        # Act / Assert
+        assert "amazon.co.uk" in repr(profile)
+        assert "active" in repr(profile)
+        assert "3" in repr(profile)
+
+    def test_llm_credential_repr_never_leaks_the_key(self):
+        # Arrange — repr output reaches logs, so the ciphertext must stay out too
+        credential = ProductLLMCredential(
+            id=1,
+            product_id=8,
+            provider="openai",
+            model="gpt-5.2",
+            encrypted_api_key="gAAAAAB-ciphertext-value",
+        )
+        # Act
+        text = repr(credential)
+        # Assert
+        assert "openai" in text
+        assert "gpt-5.2" in text
+        assert "ciphertext" not in text
+        assert "encrypted_api_key" not in text

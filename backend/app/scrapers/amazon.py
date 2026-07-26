@@ -9,7 +9,7 @@ import structlog
 
 from app.core.config import settings
 from app.models.enums import ExtractionStatus
-from app.schemas.scraper import ScrapedResult
+from app.schemas.scraper import LearnedSelector, ScrapedResult
 from app.scrapers.anti_blocking import (
     ACCEPT_LANGUAGE,
     ProxyRotator,
@@ -22,6 +22,10 @@ from app.scrapers.exceptions import ScraperError
 
 # Shared locale-aware price normaliser (canonical home: playwright_base). Imported
 # so amazon's DOM-fallback parser and its tests keep using one implementation.
+# _LEARNED_PRICE_SCRIPT is the same module's selector-parametrised DOM reader,
+# reused verbatim to run a stored LLM-generated selector (Item 16) — one price
+# parsing implementation across every Playwright path.
+from app.scrapers.playwright_base import _DOM_PRICE_SCRIPT as _LEARNED_PRICE_SCRIPT
 from app.scrapers.playwright_base import _normalize_price_text
 
 logger = structlog.get_logger()
@@ -159,6 +163,21 @@ _DOM_PRICE_SCRIPT = """
 """
 
 
+async def _evaluate_dom_price(page: object, learned: LearnedSelector | None) -> object:
+    """Read the DOM price, trying the host's healed selector before the legacy list.
+
+    Returns the raw evaluate result (``{price, currency, selector}``) or ``None``
+    when neither source matched.
+    """
+    if learned is not None:
+        result = await page.evaluate(  # type: ignore[attr-defined]
+            _LEARNED_PRICE_SCRIPT, [learned.price_selector]
+        )
+        if result is not None:
+            return result
+    return await page.evaluate(_DOM_PRICE_SCRIPT)  # type: ignore[attr-defined]
+
+
 def _parse_dom_result(
     dom_result: object,
     html: str,
@@ -217,8 +236,19 @@ def _parse_ld_result(
     )
 
 
-async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) -> ScrapedResult:
-    """Navigate to *url*, extract ld+json price, return a ScrapedResult."""
+async def _navigate_and_extract(
+    page: object,
+    url: str,
+    html_hash_fn: object,
+    learned: LearnedSelector | None = None,
+) -> ScrapedResult:
+    """Navigate to *url*, extract the price, and return a ScrapedResult.
+
+    Extraction order is ``ld+json`` → the host's stored LLM-generated selector
+    (Item 16) → the legacy hardcoded selector list. A loaded, non-blocked page
+    that yields nothing from all three is ``SELECTOR_MISS`` — Amazon moved its
+    markup — which is what triggers regeneration.
+    """
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
     try:
@@ -259,25 +289,26 @@ async def _navigate_and_extract(page: object, url: str, html_hash_fn: object) ->
         )
 
     ld_result = await page.evaluate(_LD_JSON_SCRIPT)  # type: ignore[attr-defined]
+    if ld_result is not None:
+        return _parse_ld_result(ld_result, html, html_hash, url)
 
-    if ld_result is None:
-        # No structured-data offer block — fall back to the rendered DOM price.
-        dom_result = await page.evaluate(_DOM_PRICE_SCRIPT)  # type: ignore[attr-defined]
-        if dom_result is None:
-            logger.warning("amazon_scraper_no_price", url=url)
-            return ScrapedResult(
-                url=url,
-                html=html,
-                html_hash=html_hash,
-                price=None,
-                currency=None,
-                scraped_at=datetime.now(UTC),
-                extraction_status=ExtractionStatus.EXTRACTION_FAILED,
-            )
-        logger.info("amazon_scraper_dom_fallback", url=url, selector=dom_result.get("selector"))
-        return _parse_dom_result(dom_result, html, html_hash, url)
-
-    return _parse_ld_result(ld_result, html, html_hash, url)
+    # No structured-data offer block — fall back to the rendered DOM price, the
+    # host's healed selector first so a drift already fixed by regeneration does
+    # not keep re-running the stale hardcoded list.
+    dom_result = await _evaluate_dom_price(page, learned)
+    if dom_result is None:
+        logger.warning("amazon_scraper_selector_miss", url=url)
+        return ScrapedResult(
+            url=url,
+            html=html,
+            html_hash=html_hash,
+            price=None,
+            currency=None,
+            scraped_at=datetime.now(UTC),
+            extraction_status=ExtractionStatus.SELECTOR_MISS,
+        )
+    logger.info("amazon_scraper_dom_fallback", url=url, selector=dom_result.get("selector"))
+    return _parse_dom_result(dom_result, html, html_hash, url)
 
 
 _BLOCK_STATUSES = (ExtractionStatus.BLOCKED, ExtractionStatus.CAPTCHA)
@@ -292,7 +323,7 @@ class AmazonScraper(BaseScraper):
         try:
             page = await context.new_page()  # type: ignore[attr-defined]
             await _apply_stealth(context, page)
-            return await _navigate_and_extract(page, url, self._compute_hash)
+            return await _navigate_and_extract(page, url, self._compute_hash, self.learned_selector)
         finally:
             await _safe_close(context)
 

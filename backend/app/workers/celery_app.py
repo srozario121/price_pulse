@@ -40,6 +40,7 @@ celery_app = Celery(
         "app.tasks.notify",
         "app.tasks.schedule",
         "app.tasks.maintenance",
+        "app.tasks.selector",
     ],
 )
 
@@ -70,6 +71,10 @@ celery_app.conf.update(
     task_routes={
         "app.tasks.scrape.scrape_product": {"queue": "default"},
         "app.tasks.notify.send_notification": {"queue": "default"},
+        # Selector regeneration re-renders the page and calls an LLM provider, so
+        # it runs on the browser-capable worker that also carries the credentials
+        # (Item 16). Dispatch sites pass queue= explicitly; this is the fallback.
+        "app.tasks.selector.regenerate_selector": {"queue": "playwright"},
     },
     # ── RedBeat scheduler ─────────────────────────────────────────────────────
     redbeat_redis_url=settings.REDIS_URL,

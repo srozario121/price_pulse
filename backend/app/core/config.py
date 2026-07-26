@@ -17,6 +17,54 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 # Proxy URL schemes accepted in PROXY_URLS (Item 15 anti-blocking).
 _PROXY_SCHEMES = ("http", "https", "socks5", "socks5h", "socks4")
 
+# LLM providers reachable through Pydantic AI for selector generation (Item 16).
+# Public because both the Settings validator and the per-product BYO credential
+# API validate against the same set — one list, two boundaries.
+LLM_PROVIDERS = ("openai", "anthropic", "azure", "openrouter")
+
+
+def is_azure_v1_endpoint(endpoint: str) -> bool:
+    """True when *endpoint* targets Azure's v1 API (or a Foundry serverless model).
+
+    The two Azure endpoint styles take opposite configuration, so telling them
+    apart is what lets every boundary report a precise error.
+    """
+    return endpoint.rstrip("/").endswith("/openai/v1")
+
+
+def azure_config_error(
+    endpoint: str | None,
+    api_version: str | None,
+    *,
+    endpoint_name: str = "AZURE_OPENAI_ENDPOINT",
+    version_name: str = "AZURE_OPENAI_API_VERSION",
+) -> str | None:
+    """Return why an Azure endpoint/API-version pair is unusable, or ``None`` if it is.
+
+    The single home for this rule, applied at all three boundaries that can
+    accept Azure settings: the env admin default (``Settings``), the per-product
+    BYO credential body, and model construction. The classic
+    ``https://<resource>.openai.azure.com`` form *requires* an API version; the
+    newer ``…/openai/v1`` form *rejects* one — so a naive "both are required"
+    check would wrongly refuse valid v1 configurations. The ``*_name`` arguments
+    let each caller name the fields as its own users see them.
+    """
+    if not endpoint:
+        return f"Azure OpenAI requires {endpoint_name} to be set"
+    if is_azure_v1_endpoint(endpoint):
+        if api_version:
+            return (
+                f"{version_name} must be empty for a v1 endpoint "
+                f"({endpoint_name} ending in /openai/v1), which does not accept one"
+            )
+        return None
+    if not api_version:
+        return (
+            f"Azure OpenAI requires {version_name} for a classic "
+            f"https://<resource>.openai.azure.com endpoint"
+        )
+    return None
+
 
 class Settings(BaseSettings):
     """Pydantic settings loaded from environment variables (and .env file)."""
@@ -68,6 +116,28 @@ class Settings(BaseSettings):
     # scrape resolves to BLOCKED/CAPTCHA. A dead/unreachable proxy rotates too
     # but does not consume this budget.
     MAX_PROXY_ROTATIONS: int = 2
+
+    # ── LLM selector generation (Item 16) ─────────────────────────────────────
+    # Admin-default LLM credentials used when a product carries no bring-your-own
+    # credential. The repo has no auth/user system yet, so this deployer-level
+    # default plus the per-product BYO row are the only two credential scopes.
+    # Empty LLM_API_KEY ⇒ the admin default is disabled; with no product BYO
+    # credential either, selector generation is a no-op and extraction falls back
+    # to its existing behaviour (recording ``selector_miss``).
+    LLM_PROVIDER: str = "openai"
+    LLM_MODEL: str = "gpt-5.2"
+    LLM_API_KEY: str = ""
+    # Azure-only — required (both) when LLM_PROVIDER=azure.
+    AZURE_OPENAI_ENDPOINT: str = ""
+    AZURE_OPENAI_API_VERSION: str = ""
+    # Max bytes of trimmed page HTML sent to the LLM in one generation call.
+    SELECTOR_HTML_MAX_BYTES: int = 120_000
+    # Consecutive failed generate-and-validate attempts before a host's profile is
+    # parked as ``failed`` — bounds spend on a page that can never be healed.
+    SELECTOR_MAX_REGEN_ATTEMPTS: int = 3
+    # Minimum hours between regeneration attempts for one host. Together with the
+    # attempt budget this stops a permanently-broken page hammering the provider.
+    SELECTOR_REGEN_COOLDOWN_HOURS: int = 6
 
     # ── E2E test hooks ────────────────────────────────────────────────────────
     # Mounts gated test-only control endpoints under /api/v1/_test/ when true.
@@ -129,6 +199,30 @@ class Settings(BaseSettings):
             raise ValueError("SCRAPE_JOB_RETENTION_DAYS must be >= 1")
         return v
 
+    @field_validator("LLM_PROVIDER")
+    @classmethod
+    def llm_provider_supported(cls, v: str) -> str:
+        """Reject an unknown provider at startup, not mid-scrape.
+
+        A typo'd provider would otherwise surface only when the first selector
+        regeneration runs — hours after deploy, inside a Celery worker.
+        """
+        provider = v.strip().lower()
+        if provider not in LLM_PROVIDERS:
+            raise ValueError(f"LLM_PROVIDER must be one of {LLM_PROVIDERS}, got {v!r}")
+        return provider
+
+    @field_validator(
+        "SELECTOR_HTML_MAX_BYTES",
+        "SELECTOR_MAX_REGEN_ATTEMPTS",
+        "SELECTOR_REGEN_COOLDOWN_HOURS",
+    )
+    @classmethod
+    def selector_knobs_positive(cls, v: int, info: Any) -> int:  # noqa: ANN401
+        if v < 1:
+            raise ValueError(f"{info.field_name} must be >= 1")
+        return v
+
     @field_validator("SECRET_KEY")
     @classmethod
     def secret_key_min_length(cls, v: str) -> str:
@@ -144,6 +238,22 @@ class Settings(BaseSettings):
             data = info.data if hasattr(info, "data") else {}
             return str(data.get("REDIS_URL", "redis://localhost:6379/0"))
         return str(v)
+
+    @model_validator(mode="after")
+    def validate_azure_llm_config(self) -> "Settings":
+        """Azure needs a coherent endpoint/API-version pair — fail fast, not mid-scrape.
+
+        Only enforced when the admin default is actually usable (a key is set); an
+        unconfigured deployment that never generates selectors must still boot.
+        The rule itself lives in :func:`azure_config_error`, shared with the BYO
+        credential body and model construction.
+        """
+        if self.LLM_PROVIDER != "azure" or not self.LLM_API_KEY:
+            return self
+        error = azure_config_error(self.AZURE_OPENAI_ENDPOINT, self.AZURE_OPENAI_API_VERSION)
+        if error:
+            raise ValueError(error)
+        return self
 
     @model_validator(mode="after")
     def validate_cors_origins(self) -> "Settings":

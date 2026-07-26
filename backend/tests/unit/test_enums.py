@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.models.enums import ExtractionStatus, ScrapeJobStatus
+from app.models.enums import ExtractionStatus, ScrapeJobStatus, SelectorProfileStatus
 
 
 def test_extraction_status_values() -> None:
@@ -38,7 +38,14 @@ def test_extraction_status_from_string() -> None:
 
 def test_extraction_status_all_members() -> None:
     members = {m.value for m in ExtractionStatus}
-    assert members == {"ok", "extraction_failed", "http_error", "blocked", "captcha"}
+    assert members == {
+        "ok",
+        "extraction_failed",
+        "http_error",
+        "blocked",
+        "captcha",
+        "selector_miss",
+    }
 
 
 def test_anti_blocking_statuses() -> None:
@@ -47,6 +54,26 @@ def test_anti_blocking_statuses() -> None:
     assert ExtractionStatus.CAPTCHA == "captcha"
     assert ExtractionStatus("blocked") == ExtractionStatus.BLOCKED
     assert ExtractionStatus("captcha") == ExtractionStatus.CAPTCHA
+
+
+def test_selector_miss_status() -> None:
+    # Item 16: markup drift — a loaded, non-blocked page where no selector matched.
+    assert ExtractionStatus.SELECTOR_MISS == "selector_miss"
+    assert ExtractionStatus("selector_miss") == ExtractionStatus.SELECTOR_MISS
+    # Distinct from every other failure mode: each implies a different remedy.
+    assert ExtractionStatus.SELECTOR_MISS not in {
+        ExtractionStatus.EXTRACTION_FAILED,
+        ExtractionStatus.HTTP_ERROR,
+        ExtractionStatus.BLOCKED,
+        ExtractionStatus.CAPTCHA,
+    }
+
+
+def test_selector_profile_status_values() -> None:
+    assert SelectorProfileStatus.ACTIVE == "active"
+    assert SelectorProfileStatus.STALE == "stale"
+    assert SelectorProfileStatus.FAILED == "failed"
+    assert {m.value for m in SelectorProfileStatus} == {"active", "stale", "failed"}
 
 
 # ── ScrapeJobStatus (Item 17) ──────────────────────────────────────────────────

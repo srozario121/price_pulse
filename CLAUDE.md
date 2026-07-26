@@ -123,10 +123,15 @@ Layered FastAPI application:
 - `prices.py` — paginated price history; trigger on-demand scrape (tags the dispatch with a `pp_trigger="on_demand"` Celery header for `ScrapeJob` tracking, Item 17)
 - `alerts.py` — CRUD for price alert thresholds
 - `scrape_jobs.py` — scrape-job visibility (Item 17): `GET /scrape-jobs` (paginated, filterable by `product_id`/`status`/`queue`/`task_id`), `GET /products/{id}/scrape-jobs`, and best-effort `GET /scrape-jobs/queue-depth`
+- self-healing selectors (Item 16, on `products.py`): `PUT`/`GET`/`DELETE /products/{id}/llm-credential` (per-product BYO LLM key — encrypted at rest, **never** returned; the read schema exposes provider/model + a masked hint only) and `POST /products/{id}/report-selector-issue` (202 — marks the host's selector stale and enqueues regeneration, respecting the cooldown)
 
 **Service layer** (`services/`): business logic; the only layer that writes to the DB.
 - `price_service.py` — deduplicates by HTML hash; persists `PriceRecord`; calls `alert_service.evaluate_alerts`
 - `alert_service.py` — compares latest price against all active alerts; marks triggered alerts and dispatches notification tasks
+- `llm/` (Item 16) — `schemas.py` `SelectorSuggestion` (Pydantic AI `output_type`); `client.py` `resolve_llm_config` (**product BYO → env admin default → `None`**) and `build_model` (OpenAI / Anthropic / Azure OpenAI / OpenRouter through one code path). A single long-lived `selector_agent` carries the instructions + output type; the model is passed **per run**, so one agent serves every credential.
+- `selector_generation.py` — trims page HTML (strips script/style/svg/comments, caps at `SELECTOR_HTML_MAX_BYTES`), runs one `agent.run(...)`, and `validate_selector` gates promotion by requiring the suggestion to extract a plausible price from the live page
+- `selector_profile_service.py` — the per-host selector store: `host_for_url` normalisation, `get_active_selector`, `mark_stale`, the `regeneration_allowed` cooldown/attempt guards, and `promote`
+- `llm_credential_service.py` — the only place a BYO key is encrypted (`core/crypto.py`, Fernet keyed off `SECRET_KEY`) or read back
 
 **Scraping layer** (`scrapers/`): pluggable adapters per retail source type.
 - `base.py` — abstract `BaseScraper`; `http_client.py` — shared async httpx with retry/back-off
@@ -134,7 +139,8 @@ Layered FastAPI application:
 - `ebay.py` — eBay UK (httpx + `ld+json`); `currys.py`, `john_lewis.py`, `facebook_marketplace.py` — Playwright, on the shared `playwright_base.py` `PlaywrightScraper` base (`ld+json`-first + CSS-selector DOM fallback); Facebook Marketplace classifies its login wall / bot-check as `blocked`/`captcha` (Item 18)
 - `registry.py` — **data-driven**: `get_scraper` / `queue_for_source_type` are async and resolve the scraper class (via a `strategy` → class map) and Celery queue from the DB-backed `SourcePreset` registry (Item 18). A `source_type` is valid iff an enabled `SourcePreset` row exists; it is validated at the API boundary (unknown/disabled → 422). Onboarding a UK retailer is a data change (`SourcePreset` row) not an enum/migration change. `GET /api/v1/sources` exposes the enabled presets.
 - `anti_blocking.py` — shared UA/header pool, proxy rotation + normaliser, and the `classify_block` block/CAPTCHA classifier used by both fetch paths (Item 15)
-- **Extraction statuses** (`models/enums.py` `ExtractionStatus`): `ok`, `extraction_failed` (selector/parse failure), `http_error` (transient), `blocked` (429/503/IP-ban after proxy rotations exhausted), `captcha` (robot-check interstitial, often HTTP 200). The DB column is an open `String(20)` (no CHECK constraint — see migration 0006), so new statuses need no migration.
+- **Learned selectors** (Item 16): `amazon.py` and `generic.py` consume the host's stored, LLM-generated selector via `BaseScraper.learned_selector` (a `LearnedSelector` value object attached by the registry — the adapters have different constructor signatures, so it is not an `__init__` kwarg). Extraction order — Amazon: `ld+json` → stored selector → legacy hardcoded list → `selector_miss`; generic: product `css_selector` → stored selector → `selector_miss`. The built-in paths remain the safety net, so the LLM is optional at runtime.
+- **Extraction statuses** (`models/enums.py` `ExtractionStatus`): `ok`, `extraction_failed` (a selector matched but its text would not parse), `http_error` (transient), `blocked` (429/503/IP-ban after proxy rotations exhausted), `captcha` (robot-check interstitial, often HTTP 200), `selector_miss` (Item 16 — HTTP 200, **not** a block, real content, but no selector matched a price ⇒ markup drift). The DB column is an open `String(20)` (no CHECK constraint — see migration 0006), so new statuses need no migration. `classify_block` runs **first**, unconditionally: a blocked page must never become a `selector_miss`, or generation would store a selector for the block page.
 
 **Models** (`models/`): SQLAlchemy ORM models only — no business logic.
 **Schemas** (`schemas/`): Pydantic v2 request/response schemas — separate from ORM models.
@@ -146,6 +152,7 @@ Layered FastAPI application:
 - `tasks/schedule.py` — beat schedule (default: all active products every 30 min)
 - `tasks/notify.py` — `send_notification(alert_id)` — dispatch + persist `NotificationLog`
 - `tasks/maintenance.py` — `prune_scrape_jobs` — daily beat task (static `beat_schedule`) deleting `ScrapeJob` rows older than `SCRAPE_JOB_RETENTION_DAYS` (Item 17)
+- `tasks/selector.py` — `regenerate_selector(product_id)` (Item 16) — routed to the `playwright` queue (browser-capable, and where the LLM credentials are injected). Runs **off the scrape path** so the old selectors keep serving. **Never raises and never retries** (`max_retries=0`): every failure is a counted attempt against the host's budget, and the per-host cooldown is the retry mechanism. "No credential resolved" is deliberately *not* counted — that is a property of the deployment, not the host.
 - `workers/scrape_job_signals.py` — **Celery-signal lifecycle tracking** (Item 17): `before_task_publish` (both on-demand + scheduled dispatch) creates a `queued` `ScrapeJob` row; `task_prerun`→`started`; `task_postrun` finalises, folding the extraction outcome into `success`/`failure`. Writes use a dedicated **synchronous** session (the signals fire inside the worker's running aio-pool loop, so `asyncio.run()` would raise); every handler filters to `scrape_product`, is fully guarded (never breaks scraping/notification), and upserts by the unique `task_id`. Imported by `celery_app.py` so handlers register in the API, beat, and worker processes.
 
 **Migrations**: Alembic under `backend/alembic/`; `env.py` imports all models for autogenerate.
@@ -222,13 +229,21 @@ Copy `.env.example` to `.env`. Key variables:
 | `DATABASE_URL` | `postgresql+asyncpg://...` | Async Postgres connection |
 | `REDIS_URL` | `redis://localhost:6379/0` | Celery broker + result backend |
 | `CELERY_BROKER_URL` | same as `REDIS_URL` | Explicit broker override |
-| `SECRET_KEY` | (required, min 32 chars) | Reserved for JWT auth (validated at startup) |
+| `SECRET_KEY` | (required, min 32 chars) | Reserved for JWT auth (validated at startup); also derives the Fernet key encrypting BYO LLM credentials — **rotating it invalidates stored keys** (affected products fall back to the admin default) |
 | `DEBUG` | `false` | Enable debug mode; also controls CORS and log format |
 | `CORS_ORIGINS` | `["*"]` when DEBUG=true, required otherwise | Allowed CORS origins (comma-separated) |
 | `SCRAPE_INTERVAL_MINUTES` | `30` | Default Celery Beat interval |
 | `SCRAPE_JOB_RETENTION_DAYS` | `7` | Age (days) beyond which `prune_scrape_jobs` deletes `ScrapeJob` rows (Item 17) |
 | `PROXY_URLS` | `` (empty ⇒ disabled) | BYO rotating-proxy list, comma-separated (`scheme://[user:pass@]host[:port]`, schemes: http/https/socks5/socks5h/socks4). Per-request pick + rotate-on-block across both fetch paths |
 | `MAX_PROXY_ROTATIONS` | `2` | Max proxy rotations per fetch on a detected block before the scrape resolves to `blocked`/`captcha` |
+| `LLM_PROVIDER` | `openai` | Selector-generation provider: `openai`/`anthropic`/`azure`/`openrouter` (validated at startup) |
+| `LLM_MODEL` | `gpt-5.2` | Model name; for Azure the *deployment* name, for OpenRouter `<provider>/<model>` |
+| `LLM_API_KEY` | `` (empty ⇒ admin default disabled) | Admin-default provider key. Empty **and** no product BYO key ⇒ generation is a no-op; scrapes still complete, recording `selector_miss` |
+| `AZURE_OPENAI_ENDPOINT` | `` | Required when `LLM_PROVIDER=azure` and a key is set |
+| `AZURE_OPENAI_API_VERSION` | `` | **Required** for a classic `https://<resource>.openai.azure.com` endpoint; must be **empty** for a `…/openai/v1` endpoint. Both mistakes fail at startup |
+| `SELECTOR_HTML_MAX_BYTES` | `120000` | Cap on trimmed page HTML sent to the LLM per generation call |
+| `SELECTOR_MAX_REGEN_ATTEMPTS` | `3` | Consecutive failed generate-and-validate attempts before a host's profile is parked as `failed` |
+| `SELECTOR_REGEN_COOLDOWN_HOURS` | `6` | Minimum hours between regeneration attempts for one host |
 | `LOG_LEVEL` | `INFO` | structlog level |
 | `E2E_TEST_HOOKS` | `false` | Mounts gated `/api/v1/_test/` hooks; set true **only** by `docker-compose.e2e.yml` |
 | `VITE_API_URL` | `http://localhost:8000` | Frontend API base URL (Vite build-time var) |
