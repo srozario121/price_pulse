@@ -134,7 +134,7 @@ Layered FastAPI application:
 - `alert_service.py` — compares latest price against all active alerts; marks triggered alerts and dispatches notification tasks
 - `llm/` (Item 16) — `schemas.py` `SelectorSuggestion` (Pydantic AI `output_type`); `client.py` `resolve_llm_config` (**product BYO → env admin default → `None`**) and `build_model` (OpenAI / Anthropic / Azure OpenAI / OpenRouter through one code path). A single long-lived `selector_agent` carries the instructions + output type; the model is passed **per run**, so one agent serves every credential.
 - `selector_generation.py` — trims page HTML (strips script/style/svg/comments, caps at `SELECTOR_HTML_MAX_BYTES`), runs one `agent.run(...)`, and `validate_selector` gates promotion by requiring the suggestion to extract a plausible price from the live page
-- `selector_profile_service.py` — the per-host selector store: `host_for_url` normalisation, `get_active_selector`, `mark_stale`, the `regeneration_allowed` cooldown/attempt guards, and `promote`
+- `selector_profile_service.py` — the per-host selector store: `host_for_url` normalisation, `get_stored_selector` (serves the incumbent whatever the status), `mark_stale`, the `regeneration_allowed` cooldown/attempt guards, and `promote`
 - `llm_credential_service.py` — the only place a BYO key is encrypted (`core/crypto.py`, Fernet keyed off `SECRET_KEY`) or read back
 
 **Scraping layer** (`scrapers/`): pluggable adapters per retail source type.

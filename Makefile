@@ -209,6 +209,24 @@ format:         ## Format backend (ruff format) and frontend (prettier)
 # ---------------------------------------------------------------------------
 # Quality gates
 # ---------------------------------------------------------------------------
+
+# Pin coverage.py's measurement core for the context-tagged run.
+#
+# coverage 7.x picks its core by Python version: the PEP 669 `sysmon` core on
+# 3.14+, the C `ctrace` core below that. They are NOT equivalent for this gate —
+# `sysmon` records at most one dynamic context per line and silently drops the
+# rest, which is exactly the data `check_coverage_overlap.py` measures. The same
+# suite reports 17 intra-tier duplicate lines under `sysmon` and 1722 under
+# `ctrace`; CI (Python 3.12, `ctrace` by default) reported 1721 while a developer
+# on 3.14 saw 17, so `make quality` passing locally said nothing about the gate
+# and every test-touching PR needed a CI round trip to discover the real number.
+#
+# Pinning `ctrace` makes the count reproducible on any supported Python. It is
+# the C tracer, so there is no measurable slow-down, and it is what CI already
+# used — this changes local behaviour to match CI, not the other way round.
+# Revisit if coverage.py fixes multi-context recording under `sysmon`.
+COVERAGE_CORE ?= ctrace
+
 .PHONY: quality
 quality:        ## Run full quality gate: pytest + radon + vitest + coverage-overlap; exits 1 on threshold violation
 	@mkdir -p logs/quality
@@ -217,9 +235,9 @@ quality:        ## Run full quality gate: pytest + radon + vitest + coverage-ove
 	  REPORT_DIR=logs/quality/$$TIMESTAMP; \
 	  mkdir -p $$REPORT_DIR; \
 	  echo "=== Backend tests + coverage ==="; \
-	  cd backend && uv run pytest --cov=app --cov-context=test --cov-report=xml:coverage.xml --cov-report=term-missing -m "not live_api" -q; \
+	  cd backend && COVERAGE_CORE=$(COVERAGE_CORE) uv run pytest --cov=app --cov-context=test --cov-report=xml:coverage.xml --cov-report=term-missing -m "not live_api" -q; \
 	  echo "=== Backend coverage contexts ==="; \
-	  uv run coverage json --show-contexts -o ../logs/quality/coverage-contexts.json; \
+	  COVERAGE_CORE=$(COVERAGE_CORE) uv run coverage json --show-contexts -o ../logs/quality/coverage-contexts.json; \
 	  echo "=== Backend complexity ==="; \
 	  uv run radon cc app -a -s --json > ../$$REPORT_DIR/cc.json 2>&1; \
 	  uv run radon mi app -s --json > ../$$REPORT_DIR/mi.json 2>&1; \
