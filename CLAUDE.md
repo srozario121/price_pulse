@@ -16,6 +16,14 @@ Ask only the questions that are genuinely unclear — do not ask about things al
 
 ## Commands
 
+**Python is pinned to 3.12 by the root `.python-version`.** Without it `uv` picks
+the newest interpreter it can find, so one checkout resolved 3.12 while a sibling
+worktree resolved 3.14 — and that difference is not cosmetic: coverage.py swaps
+its measurement core at 3.14, which silently broke the intra-tier overlap gate
+(see `config/quality-thresholds.toml`). 3.12 matches CI and the `python:3.12-slim`
+runtime images. `uv` honours the pin from any subdirectory, including CI's
+`working-directory: backend`.
+
 ```bash
 # Install all dependencies (backend + frontend) and wire pre-commit hooks
 make install        # uv sync --all-packages (workspace) + cd frontend && npm install + pre-commit install
