@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.tasks.scrape import _handle_selector_miss
+from app.services.scrape_runner import _handle_selector_miss
 
 
 @pytest.fixture()

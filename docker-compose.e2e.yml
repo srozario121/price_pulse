@@ -67,7 +67,19 @@ services:
           memory: 128m
           cpus: "0.25"
     networks:
-      - price-pulse-net
+      price-pulse-net:
+        # Extra DNS names for the SAME container. Item 16 keys selector profiles
+        # by *host*, which is correct in production (one retailer, one markup
+        # family) but makes every fixture page share one profile — so a scenario
+        # that heals a selector would leak that state into the next one.
+        # Reaching the fixture server through a distinct alias per scenario
+        # restores the per-scenario isolation the catalogue relies on.
+        aliases:
+          - fixture-server
+          - fixture-host-a
+          - fixture-host-b
+          - fixture-host-c
+          - fixture-host-d
 
   # ---------------------------------------------------------------------------
   # Webhook sink — off-the-shelf request echo; returns 200 so webhook

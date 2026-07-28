@@ -21,16 +21,16 @@ pytestmark = pytest.mark.integration
 _HOST = "shop.example.com"
 
 
-class TestGetActiveSelector:
+class TestGetStoredSelector:
     async def test_returns_none_when_the_host_has_no_profile(self, pg_session):
-        assert await store.get_active_selector(pg_session, "unknown.example.com") is None
+        assert await store.get_stored_selector(pg_session, "unknown.example.com") is None
 
     async def test_returns_none_for_a_profile_with_no_promoted_selector(self, pg_session):
         # Arrange — the placeholder row that holds cooldown state before any heal
         await store.get_or_create_profile(pg_session, _HOST, "generic")
 
         # Act / Assert
-        assert await store.get_active_selector(pg_session, _HOST) is None
+        assert await store.get_stored_selector(pg_session, _HOST) is None
 
     async def test_returns_none_for_an_active_profile_with_no_selector(self, pg_session):
         # Arrange — an inconsistent row (e.g. hand-edited at runtime, which the
@@ -41,17 +41,29 @@ class TestGetActiveSelector:
         await pg_session.flush()
 
         # Act / Assert
-        assert await store.get_active_selector(pg_session, _HOST) is None
+        assert await store.get_stored_selector(pg_session, _HOST) is None
 
-    async def test_returns_none_for_a_stale_profile_even_with_a_selector(self, pg_session):
-        # Arrange — a previously-healed host that just missed again
+    @pytest.mark.parametrize(
+        "status",
+        [SelectorProfileStatus.STALE, SelectorProfileStatus.FAILED],
+    )
+    async def test_keeps_serving_the_incumbent_whatever_the_status(self, pg_session, status):
+        # Arrange — a host whose selector was validated once and has since been
+        # marked stale (a miss elsewhere on the host, or a user report) or parked
         profile = await store.get_or_create_profile(pg_session, _HOST, "generic")
         profile.price_selector = ".p"
-        profile.status = SelectorProfileStatus.STALE
+        profile.status = status
         await pg_session.flush()
 
-        # Act / Assert — a stale selector must not keep being handed to scrapers
-        assert await store.get_active_selector(pg_session, _HOST) is None
+        # Act
+        learned = await store.get_stored_selector(pg_session, _HOST)
+
+        # Assert — status governs *regeneration*, not *serving*. Withholding it
+        # would strip a working selector from every other product on the host for
+        # the length of the cooldown, which is strictly worse than re-serving one
+        # that may simply miss again.
+        assert learned is not None
+        assert learned.price_selector == ".p"
 
     async def test_returns_the_promoted_selector_when_active(self, pg_session):
         # Arrange
@@ -65,7 +77,7 @@ class TestGetActiveSelector:
         )
 
         # Act
-        learned = await store.get_active_selector(pg_session, _HOST)
+        learned = await store.get_stored_selector(pg_session, _HOST)
 
         # Assert
         assert learned is not None

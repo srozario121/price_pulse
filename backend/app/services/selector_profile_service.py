@@ -1,6 +1,6 @@
 """Per-host selector-profile store and regeneration gating (Item 16).
 
-The read side is what every scrape touches: ``get_active_selector`` returns the
+The read side is what every scrape touches: ``get_stored_selector`` returns the
 validated, LLM-generated selector for a host, or ``None`` so extraction falls
 back to its built-in selectors.
 
@@ -48,17 +48,27 @@ async def get_profile(session: AsyncSession, host: str) -> SelectorProfile | Non
     return await session.scalar(select(SelectorProfile).where(SelectorProfile.host == host))
 
 
-async def get_active_selector(session: AsyncSession, host: str) -> LearnedSelector | None:
-    """Return the promoted selector for *host*, or ``None``.
+async def get_stored_selector(session: AsyncSession, host: str) -> LearnedSelector | None:
+    """Return *host*'s stored selector, or ``None`` when it has never had one.
 
-    ``None`` covers every "nothing usable stored" case — no row, a row awaiting
-    its first successful generation, or one whose status is ``stale``/``failed``
-    — so callers need only the single fallback path.
+    **Status governs regeneration, not serving.** A selector that was validated
+    once keeps being handed to scrapers whatever the profile's current status,
+    because it is the incumbent until something better is promoted — which is
+    exactly the "the old selector keeps serving meanwhile" property the async
+    validate-then-promote design depends on.
+
+    Withholding a ``stale`` selector would actively make things worse: a
+    ``selector_miss`` on one product marks the whole host stale, so every *other*
+    product on that host would lose a working selector for the duration of the
+    cooldown. A spurious user report would do the same to a perfectly healthy
+    host. Re-serving a selector that genuinely no longer matches costs nothing —
+    it simply misses again, exactly as it would have.
+
+    ``None`` therefore means only "this host has never produced a validated
+    selector", so callers still need just the single fallback path.
     """
     profile = await get_profile(session, host)
-    if profile is None or profile.status != SelectorProfileStatus.ACTIVE:
-        return None
-    if not profile.price_selector:
+    if profile is None or not profile.price_selector:
         return None
     return LearnedSelector(
         price_selector=profile.price_selector,

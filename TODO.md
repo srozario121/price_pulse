@@ -564,8 +564,10 @@ Arrange-Assert-Act for all backend tests.
   - Azure provider selected without `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_VERSION` ⇒ clear config error, not a partial request.
   - Generation returns an invalid/low-confidence selector, or one that fails validation ⇒ not promoted; profile stays on the previous active/hardcoded selector.
   - `report-selector-issue` within cooldown ⇒ 202 but no duplicate enqueue.
-- **Live E2E** (`@pytest.mark.live_api`, opt-in — excluded from the default run):
-  - A real Amazon scrape whose stored selector is cleared triggers generation through a live LLM provider (default OpenAI; parametrisable to Anthropic/Azure/OpenRouter when a key is present), validates, persists, and records `ok`; kept out of CI/default runs (external dependency + API cost).
+- **Live E2E** (`@pytest.mark.live_api` + `live_llm`, opt-in — excluded from the default run and from CI): **DELIVERED 2026-07-28**, in two layers:
+  - `make test-llm-live` (`backend/tests/live/test_llm_live.py`) — one real provider call against golden HTML; asserts the returned selector extracts the buy-box price past a was-price, a subscription price and a review count.
+  - `make test-e2e-llm` (`docs/behaviour/selector_healing.feature`, `@PP-E2E-043…045`) — the full loop against the live stack: drifted fixture page → `selector_miss` → reported issue → regeneration → a fresh scrape of the *same unchanged page* records `ok`.
+  - **Deviation from the original wording**: the loop runs against the **fixture server's drifted layout**, not a real Amazon page. A live Amazon scrape is bot-protected and non-deterministic, so it would make the test flaky while exercising exactly the same generate→validate→promote path; the fixture page instead carries deliberate decoys so a selector that merely finds *a* number still fails. A real-retailer variant remains possible under `live_amazon` if ever wanted.
 
 ### Documentation
 - **`core/config.py` / `.env.example`** — update: `LLM_PROVIDER` (default `openai`), `LLM_MODEL`, `LLM_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION`, `SELECTOR_HTML_MAX_BYTES`, `SELECTOR_MAX_REGEN_ATTEMPTS`, `SELECTOR_REGEN_COOLDOWN_HOURS` (keys never committed; empty `LLM_API_KEY` disables the admin default; provider→required-vars matrix incl. Azure).

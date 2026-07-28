@@ -65,8 +65,8 @@ async def test_scrape_product_returns_extraction_status() -> None:
 
     with (
         patch("app.tasks.scrape.AsyncSessionLocal", return_value=session_mock),
-        patch("app.tasks.scrape.get_scraper", AsyncMock(return_value=scraper_mock)),
-        patch("app.tasks.scrape.price_service") as ps_mock,
+        patch("app.services.scrape_runner.get_scraper", AsyncMock(return_value=scraper_mock)),
+        patch("app.services.scrape_runner.price_service") as ps_mock,
     ):
         ps_mock.record_price = AsyncMock(return_value=record)
         result = await scrape_product(product_id=1)
@@ -120,8 +120,8 @@ async def test_scrape_product_amazon_routing() -> None:
 
     with (
         patch("app.tasks.scrape.AsyncSessionLocal", return_value=session_mock),
-        patch("app.tasks.scrape.get_scraper", capture_get_scraper),
-        patch("app.tasks.scrape.price_service") as ps_mock,
+        patch("app.services.scrape_runner.get_scraper", capture_get_scraper),
+        patch("app.services.scrape_runner.price_service") as ps_mock,
     ):
         ps_mock.record_price = AsyncMock(return_value=record)
         await scrape_product(product_id=1)

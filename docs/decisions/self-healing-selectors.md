@@ -73,6 +73,29 @@ commoner failure: a hallucinated selector matching nothing, silently replacing a
 working selector with a broken one. Targeting the right element is the model's
 job, steered by the agent instructions.
 
+### Status governs regeneration, not serving
+
+A stored selector is handed to scrapers whenever one exists, **whatever the
+profile's status**. `stale` and `failed` gate *whether regeneration may run*;
+they never gate *whether the incumbent selector is used*.
+
+This was not the original implementation, and the difference is not cosmetic —
+withholding a non-`active` selector produces a **livelock**, which the live E2E
+run surfaced on 2026-07-28: the worker promoted a validated selector, and scrapes
+were still recording `selector_miss` two minutes later. Each scrape read the
+profile while it was `stale`, got nothing, missed, and its own
+`_handle_selector_miss` demoted the freshly-promoted `active` profile back to
+`stale`. A host under ordinary scheduled scraping would heal and instantly
+un-heal itself, forever, and no unit or integration test could see it because
+none of them run a scrape and a promotion concurrently.
+
+The same rule also stops two lesser harms: a `selector_miss` on one product
+marks the whole host stale, which would strip a working selector from every
+*other* product on that host for the length of the cooldown; and a spurious user
+report would do the same to a perfectly healthy host. Re-serving a selector that
+genuinely no longer matches costs nothing — it misses again, exactly as it would
+have.
+
 ### Asynchronous regeneration, off the scrape path
 
 A `selector_miss` marks the host stale and enqueues a Celery task on the

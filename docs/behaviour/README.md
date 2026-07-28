@@ -26,10 +26,24 @@ make test-e2e          # up → backend pytest-bdd + frontend playwright-bdd →
 make test-e2e-smoke    # only @smoke-tagged scenarios (fast; runs on every PR)
 make e2e-up            # bring the e2e overlay up (for local iteration)
 make e2e-down          # tear it down and remove volumes
+
+make test-e2e-llm      # @live-llm scenarios only — SPENDS REAL MONEY (Item 16)
 ```
 
 In CI, the `e2e` job runs `@smoke` on every PR/push and the **full** catalogue
 nightly (schedule) and on manual `workflow_dispatch`.
+
+### `@live-llm` — scenarios that spend money
+
+`selector_healing.feature` calls a **real LLM provider**. It is tagged
+`@live-llm` and is deliberately excluded from every automated path:
+`make test-e2e` selects `"live_api and not live_llm"`, `make test-e2e-smoke`
+selects `"live_api and smoke"`, and CI runs neither marker. It needs an
+`LLM_API_KEY` in `.env` and is invoked only by `make test-e2e-llm`.
+
+The double marker is the safeguard: these steps carry `live_llm` *in addition
+to* `live_api`, so widening a marker selection cannot sweep them into a free
+suite by accident.
 
 ## Scenario ID convention — `PP-E2E-NNN`
 
@@ -51,8 +65,11 @@ tests, docs, and discussions can reference behaviour unambiguously.
 | `alerts.feature` | PP-E2E-020…022 | pytest-bdd | `backend/tests/e2e/steps/test_behaviour.py` |
 | `notification_channels.feature` | PP-E2E-030…034 | pytest-bdd | `backend/tests/e2e/steps/test_behaviour.py` |
 | `ui_journeys.feature` | PP-E2E-040…042 | playwright-bdd | `frontend/tests/e2e/steps/ui_journeys.steps.ts` |
+| `selector_healing.feature` | PP-E2E-043…045 | pytest-bdd | `backend/tests/e2e/steps/test_selector_healing.py` |
 
 `@smoke` scenarios: `PP-E2E-001`, `PP-E2E-010`, `PP-E2E-013`, `PP-E2E-020`, `PP-E2E-040`.
+
+`@live-llm` scenarios: `PP-E2E-043`…`PP-E2E-045` (opt-in only — see above).
 
 ## Determinism (test hooks)
 

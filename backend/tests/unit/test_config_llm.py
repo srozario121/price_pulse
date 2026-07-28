@@ -28,7 +28,11 @@ _GATEWAY = "https://llm-gateway.internal/v1"
 
 
 def _settings(**overrides) -> Settings:
-    return Settings(**{**_BASE, **overrides})
+    # _env_file=None so a developer's real .env cannot leak into these
+    # assertions. Without it, a machine with a populated LLM_API_KEY fails
+    # "empty key is the disabled switch" — a false red that says nothing about
+    # the code. Tests of defaults must not depend on ambient configuration.
+    return Settings(_env_file=None, **{**_BASE, **overrides})
 
 
 class TestLLMProvider:

@@ -88,6 +88,10 @@ make smoke                       # full-stack smoke test: up → health poll →
 # Executed E2E behaviour (BDD) — runs the docs/behaviour/ Gherkin catalogue
 make test-e2e                    # up e2e overlay → backend pytest-bdd + frontend playwright-bdd → down
 make test-e2e-smoke              # only @smoke-tagged scenarios (fast; runs on every PR)
+
+# Live LLM tests (Item 16) — these SPEND REAL MONEY; opt-in, never in CI
+make test-llm-live               # one real provider call; proves the key/model/endpoint wiring
+make test-e2e-llm                # full self-healing loop against the e2e stack (drifted page → heals)
 make e2e-up                      # bring the e2e compose overlay up (fixture-server + webhook-sink + test hooks)
 make e2e-down                    # tear the e2e overlay down and remove volumes
 
@@ -188,9 +192,20 @@ User adds URL → POST /api/v1/products
 backend/tests/
 ├── unit/        # isolated, no DB — mock SQLAlchemy session and httpx
 ├── integration/ # real DB (SQLite in-memory or test postgres container)
+├── live/        # calls a REAL LLM provider and SPENDS MONEY (Item 16);
+                 # marked live_api, excluded from the default run and from CI —
+                 # invoke via make test-llm-live
 └── e2e/         # executed BDD (pytest-bdd) against the live e2e compose stack;
                  # excluded from the default run — invoke via make test-e2e
 ```
+
+**No test may reach an LLM provider except the two opt-in targets.** Every unit
+and integration selector test sets `models.ALLOW_MODEL_REQUESTS = False` and
+substitutes a Pydantic AI `FunctionModel`, so a wiring mistake fails a test
+rather than billing an account. The money-spending scenarios carry a `live_llm`
+marker *in addition to* `live_api`, and `make test-e2e` selects
+`"live_api and not live_llm"` — so widening a marker cannot sweep them into the
+free suite.
 
 **Expected E2E behaviour is specified in `docs/behaviour/`** as executed Gherkin
 (the single source of truth). Backend scenarios run under `pytest-bdd`
