@@ -120,11 +120,20 @@ eslint_max_warnings = 0
 # (Python 3.12) — the local count is NOT comparable (it reports ~17 on Python 3.14,
 # where different async/Docker-dependent tests run and coverage attributes lines
 # differently), so this figure must be read off the CI Quality job log.
-baseline_backend_duplicate_lines = 1664
+#
+# Re-baselined 2026-07-28 backend (1664 -> 1710): LLM_BASE_URL (custom API endpoint
+# for the openai/anthropic providers). The whole +46 is in the two files the change
+# touches — core/config (59 -> 80) and services/llm/client (56 -> 81). The new unit
+# tests each assert a distinct rule (default endpoint, custom endpoint honoured,
+# rejected for openrouter, rejected for azure, malformed URL, BYO does not inherit
+# the admin gateway) but all re-run the same Settings-construction and
+# build_model/_base_url_kwargs lines their sibling tests already cover — the
+# "different behaviours sharing an execution path" case. Frontend unchanged at 1229.
+baseline_backend_duplicate_lines = 1710
 baseline_frontend_duplicate_lines = 1229
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
-max_intra_tier_duplicate_lines_backend = 1664
+max_intra_tier_duplicate_lines_backend = 1710
 max_intra_tier_duplicate_lines_frontend = 1229
