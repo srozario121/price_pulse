@@ -32,6 +32,10 @@ price_pulse/
 | [Node.js](https://nodejs.org/) | ≥ 20 | Frontend + commitlint |
 | [Git](https://git-scm.com/) | ≥ 2.39 | Version control |
 
+Python is pinned to **3.12** by the root `.python-version` (matching CI and the
+`python:3.12-slim` runtime images); `uv` installs it for you, so no system Python
+is required.
+
 ## Quick Start
 
 ```bash
