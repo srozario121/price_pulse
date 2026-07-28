@@ -53,7 +53,7 @@ The API will be available at `http://localhost:8000` and the UI at `http://local
 
 | Target | Description |
 |--------|-------------|
-| `make install` | Install all deps (uv sync + npm install) and wire pre-commit hooks |
+| `make install` | Install all deps (uv sync --all-packages + npm install) and wire pre-commit hooks |
 | `make dev` | Start dev stack with Docker Compose (hot-reload) |
 | `make up` | Start production-like stack (detached) |
 | `make down` | Stop and remove containers |

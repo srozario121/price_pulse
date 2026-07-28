@@ -32,8 +32,14 @@ help:           ## Show this help message
 # Installation
 # ---------------------------------------------------------------------------
 .PHONY: install
-install:        ## Install all deps: uv sync (workspace) + npm install + pre-commit hooks
-	uv sync
+install:        ## Install all deps: uv sync --all-packages + npm install + pre-commit hooks
+	# --all-packages, not a bare `uv sync`. The root pyproject is an empty
+	# workspace shell (`dependencies = []`) whose only member is `backend/`, and
+	# from the workspace root uv syncs the ROOT package alone — pruning every
+	# backend dependency out of the shared .venv. `make install` then left a
+	# checkout that could not import fastapi, let alone run `make test`.
+	# CI never hit this because it runs `uv sync` with working-directory: backend.
+	uv sync --all-packages
 	cd backend && uv run playwright install chromium
 	cd frontend && npm install
 	cd frontend && npx playwright install chromium

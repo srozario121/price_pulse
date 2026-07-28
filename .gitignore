@@ -74,6 +74,11 @@ redis-data/
 .env
 .env.local
 .env.*.local
+# Backups of a populated .env carry real credentials — `.env` alone does not
+# match `.env.bak.<timestamp>`, so one `git add -A` would have committed a live
+# API key. Ignore every .env derivative rather than the exact name.
+.env.*
+!.env.example
 *.pem
 *.key
 *.cert
