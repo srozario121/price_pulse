@@ -129,7 +129,7 @@ async def test_scrape_sync_records_price_and_triggers_alert(hooks_client, monkey
     alert_id = await _create_alert(hooks_client, product_id, threshold="100.00")
 
     monkeypatch.setattr(
-        "app.api.v1._test_hooks.get_scraper",
+        "app.services.scrape_runner.get_scraper",
         _stub_get_scraper(_ok_result("http://fixture/p1", "50.00")),
     )
     dispatched: list[int] = []
@@ -164,7 +164,7 @@ async def test_reset_cooldown_clears_notified_at(hooks_client, monkeypatch) -> N
     product_id = await _create_product(hooks_client, url="http://fixture/p2")
     alert_id = await _create_alert(hooks_client, product_id, threshold="100.00")
     monkeypatch.setattr(
-        "app.api.v1._test_hooks.get_scraper",
+        "app.services.scrape_runner.get_scraper",
         _stub_get_scraper(_ok_result("http://fixture/p2", "50.00")),
     )
     monkeypatch.setattr("app.services.notifications.notify_alert", lambda aid: None)

@@ -44,9 +44,14 @@ class FailingProductRead(BaseModel):
     permanently CAPTCHA-walled source) is visible instead of silently recording
     price-less records forever.
 
-    ``failure_category`` (Item 15) groups the latest failure as ``blocked`` /
-    ``captcha`` / ``other`` so an anti-blocking spike is distinguishable from
-    ordinary extraction/HTTP failures.
+    ``failure_category`` groups the latest failure as ``blocked`` / ``captcha``
+    (Item 15) / ``selector_miss`` (Item 16) / ``other``, so an anti-blocking spike
+    and a markup-drift spike are each distinguishable from ordinary
+    extraction/HTTP failures — and from each other, since they need different
+    responses (rotate proxies vs regenerate selectors).
+
+    ``host`` is the normalised selector-profile key, so a drift affecting every
+    product on one retailer is visible as one host rather than N products.
     """
 
     product: ProductRead
@@ -54,3 +59,18 @@ class FailingProductRead(BaseModel):
     latest_captured_at: datetime
     last_success_at: datetime | None
     failure_category: str
+    host: str
+
+
+class SelectorIssueReportRead(BaseModel):
+    """``POST /products/{id}/report-selector-issue`` response (202).
+
+    ``regeneration_enqueued`` is False when the report was accepted but the host's
+    cooldown window has not elapsed — the report still counted, it just did not
+    queue duplicate work.
+    """
+
+    product_id: int
+    host: str
+    status: str
+    regeneration_enqueued: bool

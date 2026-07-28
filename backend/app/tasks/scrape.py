@@ -17,8 +17,7 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.product import Product
-from app.scrapers.registry import get_scraper
-from app.services import price_service
+from app.services import scrape_runner
 from app.workers.celery_app import celery_app
 
 logger = structlog.get_logger()
@@ -47,25 +46,7 @@ async def scrape_product(self: object, product_id: int) -> str:
                 logger.warning("scrape_product_not_found", product_id=product_id)
                 return "not_found"
 
-            source_type = str(product.source_type)
-
-            # Resolve the scraper from the DB-backed preset registry. The registry
-            # only forwards the CSS-selector kwargs to selector-based strategies
-            # (generic); other strategies ignore them.
-            scraper = await get_scraper(
-                source_type,
-                session,
-                css_selector=product.css_selector,
-                css_selector_currency=product.css_selector_currency,
-            )
-            scraped = await scraper.fetch(product.url)
-
-            # Persist result
-            record = await price_service.record_price(
-                product_id=product_id,
-                scraped_result=scraped,
-                session=session,
-            )
+            record = await scrape_runner.run_scrape(session, product)
             await session.commit()
 
             logger.info(

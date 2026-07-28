@@ -24,7 +24,11 @@ def make_settings(**kwargs):
     to_pop = fields_as_env - kwargs_upper
     saved = {k: os.environ.pop(k) for k in to_pop if k in os.environ}
     try:
-        return Settings(**kwargs)  # type: ignore[call-arg]
+        # _env_file=None for the same reason the env vars above are popped: this
+        # helper builds Settings from *only* what the test passes. Reading a
+        # developer's real .env would make default-value assertions depend on the
+        # machine the suite runs on.
+        return Settings(_env_file=None, **kwargs)  # type: ignore[call-arg]
     finally:
         os.environ.update(saved)
 

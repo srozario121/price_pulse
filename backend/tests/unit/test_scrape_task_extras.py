@@ -29,7 +29,7 @@ async def test_scrape_product_logs_retry_warning_on_exception() -> None:
 
     with (
         patch("app.tasks.scrape.AsyncSessionLocal", return_value=session),
-        patch("app.tasks.scrape.get_scraper", side_effect=ValueError("scraper failed")),
+        patch("app.services.scrape_runner.get_scraper", side_effect=ValueError("scraper failed")),
         patch("app.tasks.scrape.logger") as log_mock,
     ):
         # Monkey-patch retry on the task instance so self.retry = retry_mock
@@ -66,7 +66,7 @@ async def test_scrape_product_max_retries_exceeded_logs_error() -> None:
 
     with (
         patch("app.tasks.scrape.AsyncSessionLocal", return_value=session),
-        patch("app.tasks.scrape.get_scraper", side_effect=ValueError("fail")),
+        patch("app.services.scrape_runner.get_scraper", side_effect=ValueError("fail")),
         patch("app.tasks.scrape.logger") as log_mock,
     ):
         scrape_product.retry = retry_mock  # type: ignore[attr-defined]

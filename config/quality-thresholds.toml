@@ -98,11 +98,53 @@ eslint_max_warnings = 0
 # ScrapeJob upsert dialect-aware added a small `_insert_for` helper on the shared
 # handle_publish path, so the several integration tests that publish a job now
 # re-cover those few extra lines (integration 314 -> 318) — same shared-path case.
-baseline_backend_duplicate_lines = 1173
+#
+# Re-baselined 2026-07-26 backend (1173 -> 1664): Item 16 self-healing selectors. The
+# increase is concentrated entirely in the modules this item adds or changes —
+# selector_profile_service (96 lines), selector_generation (89), llm/client (56),
+# tasks/selector (55), plus generic/amazon (the new learned-selector layer) and
+# core/config + core/exceptions (the shared Azure rule and the 422 serialisation fix).
+# The pattern is the one this gate re-baselines for, "different behaviours sharing an
+# execution path", in three shapes:
+#   * the store/profile tests each assert a distinct lifecycle transition (create,
+#     demote, budget exhaustion, promotion, revive) but all re-run the same
+#     get_or_create + flush lines;
+#   * the regeneration-task tests each assert a distinct outcome (promoted, cooldown,
+#     disabled, unusable-page, generation-failed, validation-failed) but all re-run the
+#     same task entry/guard/commit path;
+#   * the credential-API integration tests each assert a distinct rejection or storage
+#     property but all re-run the same route + encrypt/decrypt lines against real
+#     Postgres — the "endpoint needs a live DB, each scenario re-runs the route" case
+#     already re-baselined for /products/failing.
+# Frontend is unchanged at 1229: Item 16 is backend-only. Captured on the CI runtime
+# (Python 3.12) — the local count is NOT comparable (it reports ~17 on Python 3.14,
+# where different async/Docker-dependent tests run and coverage attributes lines
+# differently), so this figure must be read off the CI Quality job log.
+#
+# Re-baselined 2026-07-28 backend (1664 -> 1710): LLM_BASE_URL (custom API endpoint
+# for the openai/anthropic providers). The whole +46 is in the two files the change
+# touches — core/config (59 -> 80) and services/llm/client (56 -> 81). The new unit
+# tests each assert a distinct rule (default endpoint, custom endpoint honoured,
+# rejected for openrouter, rejected for azure, malformed URL, BYO does not inherit
+# the admin gateway) but all re-run the same Settings-construction and
+# build_model/_base_url_kwargs lines their sibling tests already cover — the
+# "different behaviours sharing an execution path" case. Frontend unchanged at 1229.
+#
+# Re-baselined 2026-07-28 backend (1710 -> 1721): the live-LLM test layer and the
+# scrape_runner extraction. Net +11, and the shape is mostly a *move*:
+# tasks/scrape 52 -> 27 as its body left, the new services/scrape_runner picking
+# that body up with more overlap than before because BOTH callers (the Celery
+# task and the E2E scrape-sync hook) now exercise one implementation instead of
+# two copies — which is the point of the extraction, and strictly better than the
+# silent divergence it replaced. selector_profile_service 96 -> 100 is the new
+# parametrised "serves the incumbent whatever the status" test. Frontend
+# unchanged at 1229. Captured on the CI runtime (Python 3.12) — the local count
+# is NOT comparable, so read this figure off the CI Quality job log.
+baseline_backend_duplicate_lines = 1721
 baseline_frontend_duplicate_lines = 1229
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
-max_intra_tier_duplicate_lines_backend = 1173
+max_intra_tier_duplicate_lines_backend = 1721
 max_intra_tier_duplicate_lines_frontend = 1229

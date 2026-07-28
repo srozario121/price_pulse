@@ -434,7 +434,7 @@ Arrange-Assert-Act for all backend tests.
 
 ---
 
-## 16. Handle Selector Drift — LLM-Generated Self-Healing Selectors (Pydantic AI, Multi-Provider, BYO Key)
+## 16. Handle Selector Drift — LLM-Generated Self-Healing Selectors (Pydantic AI, Multi-Provider, BYO Key) ✅ COMPLETE
 
 DOM price extraction (added 2026-07-12) depends on a hardcoded, ordered list of Amazon
 CSS selectors (`amazon.py` `_DOM_PRICE_SCRIPT`). Amazon rotates its markup periodically,
@@ -468,13 +468,13 @@ raised for a genuinely-loaded, non-blocked page. This item also extends the same
 
 ### Implementation workflow (mandatory — complete in order)
 
-1. [ ] Create an isolated git worktree before writing any code:
+1. [x] Create an isolated git worktree before writing any code:
        `git worktree add ../pp-item-16 -b feat/item-16`
-2. [ ] Implement every task below inside that worktree — never directly on `main`.
-3. [ ] All quality gates must pass before opening a PR:
+2. [x] Implement every task below inside that worktree — never directly on `main`.
+3. [x] All quality gates must pass before opening a PR:
        `make test` exits 0 and `make quality` exits 0
        (see `CONTRIBUTING.md` → Pull Request Checklist).
-4. [ ] Raise a Pull Request: `gh pr create`
+4. [x] Raise a Pull Request: `gh pr create`
        **No direct commits to the default branch (`main`) are permitted.**
 
 ### Design decisions (resolved)
@@ -506,39 +506,39 @@ raised for a genuinely-loaded, non-blocked page. This item also extends the same
 ### Tasks
 
 **Config + dependency**
-- [ ] Add the admin-default LLM settings to `core/config.py` `Settings`: `LLM_PROVIDER` (default `openai`; one of `openai`/`anthropic`/`azure`/`openrouter`, validated), `LLM_MODEL` (default a current OpenAI model string), `LLM_API_KEY` (empty ⇒ admin-default generation disabled), and Azure-only `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_VERSION`. Add `SELECTOR_HTML_MAX_BYTES`, `SELECTOR_MAX_REGEN_ATTEMPTS`, `SELECTOR_REGEN_COOLDOWN_HOURS`. Document each in `.env.example` (keys never committed; empty `LLM_API_KEY` disables the admin default; note provider→required-vars matrix, esp. Azure).
-- [ ] Add `pydantic-ai` (or `pydantic-ai-slim` with the `openai` + `anthropic` extras — Azure & OpenRouter ride the OpenAI-compatible provider, so the `openai` extra covers them) and `cryptography` (Fernet, if not already transitive) to `backend/pyproject.toml`. Inject `LLM_*` into the backend **and** `celery-playwright` worker.
+- [x] Add the admin-default LLM settings to `core/config.py` `Settings`: `LLM_PROVIDER` (default `openai`; one of `openai`/`anthropic`/`azure`/`openrouter`, validated), `LLM_MODEL` (default a current OpenAI model string), `LLM_API_KEY` (empty ⇒ admin-default generation disabled), and Azure-only `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_VERSION`. Add `SELECTOR_HTML_MAX_BYTES`, `SELECTOR_MAX_REGEN_ATTEMPTS`, `SELECTOR_REGEN_COOLDOWN_HOURS`. Document each in `.env.example` (keys never committed; empty `LLM_API_KEY` disables the admin default; note provider→required-vars matrix, esp. Azure).
+- [x] Add `pydantic-ai` (or `pydantic-ai-slim` with the `openai` + `anthropic` extras — Azure & OpenRouter ride the OpenAI-compatible provider, so the `openai` extra covers them) and `cryptography` (Fernet, if not already transitive) to `backend/pyproject.toml`. Inject `LLM_*` into the backend **and** `celery-playwright` worker.
 
 **LLM client abstraction (Pydantic AI)**
-- [ ] Create `services/llm/` (e.g. `client.py` + `schemas.py`): a `SelectorSuggestion` Pydantic `output_type` `{price_selector, currency_selector?, confidence}`; a `resolve_llm_config(product)` returning the effective `(provider, model, api_key, azure_*)` via **product BYO → env admin default → None**; and a `build_agent(config)` that constructs the Pydantic AI `Model`/`Provider` for the resolved provider (OpenAI / Anthropic / Azure via `AzureProvider` / OpenRouter) with an explicit `api_key`. `None` config ⇒ generation disabled (returns `None`, never raises).
+- [x] Create `services/llm/` (e.g. `client.py` + `schemas.py`): a `SelectorSuggestion` Pydantic `output_type` `{price_selector, currency_selector?, confidence}`; a `resolve_llm_config(product)` returning the effective `(provider, model, api_key, azure_*)` via **product BYO → env admin default → None**; and a `build_agent(config)` that constructs the Pydantic AI `Model`/`Provider` for the resolved provider (OpenAI / Anthropic / Azure via `AzureProvider` / OpenRouter) with an explicit `api_key`. `None` config ⇒ generation disabled (returns `None`, never raises).
 
 **Per-product BYO credential (encrypted at rest)**
-- [ ] Create the `ProductLLMCredential` model (`models/`) — `product_id` (FK, unique), `provider`, `model`, `encrypted_api_key`, optional `azure_endpoint`/`azure_api_version`; add an Alembic migration. A Fernet helper (`core/crypto.py`) derives the key from `SECRET_KEY`; encrypt on write, decrypt only in `resolve_llm_config`. The key is **never** returned by any endpoint.
-- [ ] Endpoints on `api/v1/products.py`: `PUT /products/{id}/llm-credential` (set/replace provider+model+api_key [+azure fields]; provider validated to the 4; 404 unknown product; returns masked metadata, never the key), `GET /products/{id}/llm-credential` (provider/model/`has_key` masked), `DELETE /products/{id}/llm-credential` (revert to admin default). New `ProductLLMCredentialWrite`/`Read` schemas (Read omits the secret).
+- [x] Create the `ProductLLMCredential` model (`models/`) — `product_id` (FK, unique), `provider`, `model`, `encrypted_api_key`, optional `azure_endpoint`/`azure_api_version`; add an Alembic migration. A Fernet helper (`core/crypto.py`) derives the key from `SECRET_KEY`; encrypt on write, decrypt only in `resolve_llm_config`. The key is **never** returned by any endpoint.
+- [x] Endpoints on `api/v1/products.py`: `PUT /products/{id}/llm-credential` (set/replace provider+model+api_key [+azure fields]; provider validated to the 4; 404 unknown product; returns masked metadata, never the key), `GET /products/{id}/llm-credential` (provider/model/`has_key` masked), `DELETE /products/{id}/llm-credential` (revert to admin default). New `ProductLLMCredentialWrite`/`Read` schemas (Read omits the secret).
 
 **Selector store**
-- [ ] Create the `SelectorProfile` model (`models/`) keyed by `host`, versioned, with `status`/`confidence`/`generated_at`/`last_validated_at`/metadata; add an Alembic migration.
-- [ ] Repository/service helpers to fetch the active profile for a host, mark stale, and persist a new validated version.
+- [x] Create the `SelectorProfile` model (`models/`) keyed by `host`, versioned, with `status`/`confidence`/`generated_at`/`last_validated_at`/metadata; add an Alembic migration.
+- [x] Repository/service helpers to fetch the active profile for a host, mark stale, and persist a new validated version.
 
 **Extraction status**
-- [ ] Add `SELECTOR_MISS = "selector_miss"` to `ExtractionStatus` (`models/enums.py`); no DB migration (string column). Confirm no CHECK constraint on `price_records.extraction_status`.
+- [x] Add `SELECTOR_MISS = "selector_miss"` to `ExtractionStatus` (`models/enums.py`); no DB migration (string column). Confirm no CHECK constraint on `price_records.extraction_status`.
 
 **Selector-generation service**
-- [ ] Create `services/selector_generation.py`: trim HTML (strip scripts/styles/svg/comments, cap at `SELECTOR_HTML_MAX_BYTES`), resolve the LLM config for the product (`resolve_llm_config`), and run one Pydantic AI `agent.run(...)` with `output_type=SelectorSuggestion` (per-run `model=` from the resolved config), returning the validated suggestion. Unresolved config (no BYO key, no admin default) ⇒ return `None` (generation disabled). Provider/auth errors are caught and surfaced as a failed attempt, never a crash.
-- [ ] Validation: a generated selector must extract a plausible numeric price on the current page (reuse `_normalize_price_text`) before it is persisted/promoted; a failed validation counts against `SELECTOR_MAX_REGEN_ATTEMPTS`.
+- [x] Create `services/selector_generation.py`: trim HTML (strip scripts/styles/svg/comments, cap at `SELECTOR_HTML_MAX_BYTES`), resolve the LLM config for the product (`resolve_llm_config`), and run one Pydantic AI `agent.run(...)` with `output_type=SelectorSuggestion` (per-run `model=` from the resolved config), returning the validated suggestion. Unresolved config (no BYO key, no admin default) ⇒ return `None` (generation disabled). Provider/auth errors are caught and surfaced as a failed attempt, never a crash.
+- [x] Validation: a generated selector must extract a plausible numeric price on the current page (reuse `_normalize_price_text`) before it is persisted/promoted; a failed validation counts against `SELECTOR_MAX_REGEN_ATTEMPTS`.
 
 **Wire into extraction (both paths)**
-- [ ] `amazon.py`: after `ld+json`, try the host's stored active selector; then the legacy `_DOM_PRICE_SCRIPT` list; a non-blocked loaded page with no price ⇒ `SELECTOR_MISS`. Gate on Item 15's `classify_block` — a blocked page is never a `selector_miss`.
-- [ ] `generic.py`: after the product `css_selector`, try the host's stored active selector; non-blocked loaded page with no price ⇒ `SELECTOR_MISS`. Graceful fallback to existing behaviour when generation is unavailable.
+- [x] `amazon.py`: after `ld+json`, try the host's stored active selector; then the legacy `_DOM_PRICE_SCRIPT` list; a non-blocked loaded page with no price ⇒ `SELECTOR_MISS`. Gate on Item 15's `classify_block` — a blocked page is never a `selector_miss`.
+- [x] `generic.py`: after the product `css_selector`, try the host's stored active selector; non-blocked loaded page with no price ⇒ `SELECTOR_MISS`. Graceful fallback to existing behaviour when generation is unavailable.
 
 **Async regeneration**
-- [ ] `tasks/`: a Celery task that (re)generates a host's selector, validates it, and promotes it — enqueued on the first `selector_miss` for a host and on a user report; honours bounded attempts + per-host cooldown. Runs on the `celery-playwright` worker where the LLM credentials are injected; picks the triggering product's BYO credential (else the admin default) via `resolve_llm_config`.
+- [x] `tasks/`: a Celery task that (re)generates a host's selector, validates it, and promotes it — enqueued on the first `selector_miss` for a host and on a user report; honours bounded attempts + per-host cooldown. Runs on the `celery-playwright` worker where the LLM credentials are injected; picks the triggering product's BYO credential (else the admin default) via `resolve_llm_config`.
 
 **Report-issue endpoint**
-- [ ] `POST /api/v1/products/{id}/report-selector-issue` → mark the host profile stale, enqueue regeneration (respecting cooldown), return 202.
+- [x] `POST /api/v1/products/{id}/report-selector-issue` → mark the host profile stale, enqueue regeneration (respecting cooldown), return 202.
 
 **Monitoring**
-- [ ] Extend `monitoring_service`/`schemas/product.py`/`api/v1/products.py` to break out `selector_miss` counts per host/`source_type` on `GET /products/failing` (co-ordinate with Item 15).
+- [x] Extend `monitoring_service`/`schemas/product.py`/`api/v1/products.py` to break out `selector_miss` counts per host/`source_type` on `GET /products/failing` (co-ordinate with Item 15).
 
 ### Test strategy
 
@@ -564,8 +564,10 @@ Arrange-Assert-Act for all backend tests.
   - Azure provider selected without `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_VERSION` ⇒ clear config error, not a partial request.
   - Generation returns an invalid/low-confidence selector, or one that fails validation ⇒ not promoted; profile stays on the previous active/hardcoded selector.
   - `report-selector-issue` within cooldown ⇒ 202 but no duplicate enqueue.
-- **Live E2E** (`@pytest.mark.live_api`, opt-in — excluded from the default run):
-  - A real Amazon scrape whose stored selector is cleared triggers generation through a live LLM provider (default OpenAI; parametrisable to Anthropic/Azure/OpenRouter when a key is present), validates, persists, and records `ok`; kept out of CI/default runs (external dependency + API cost).
+- **Live E2E** (`@pytest.mark.live_api` + `live_llm`, opt-in — excluded from the default run and from CI): **DELIVERED 2026-07-28**, in two layers:
+  - `make test-llm-live` (`backend/tests/live/test_llm_live.py`) — one real provider call against golden HTML; asserts the returned selector extracts the buy-box price past a was-price, a subscription price and a review count.
+  - `make test-e2e-llm` (`docs/behaviour/selector_healing.feature`, `@PP-E2E-043…045`) — the full loop against the live stack: drifted fixture page → `selector_miss` → reported issue → regeneration → a fresh scrape of the *same unchanged page* records `ok`.
+  - **Deviation from the original wording**: the loop runs against the **fixture server's drifted layout**, not a real Amazon page. A live Amazon scrape is bot-protected and non-deterministic, so it would make the test flaky while exercising exactly the same generate→validate→promote path; the fixture page instead carries deliberate decoys so a selector that merely finds *a* number still fails. A real-retailer variant remains possible under `live_amazon` if ever wanted.
 
 ### Documentation
 - **`core/config.py` / `.env.example`** — update: `LLM_PROVIDER` (default `openai`), `LLM_MODEL`, `LLM_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION`, `SELECTOR_HTML_MAX_BYTES`, `SELECTOR_MAX_REGEN_ATTEMPTS`, `SELECTOR_REGEN_COOLDOWN_HOURS` (keys never committed; empty `LLM_API_KEY` disables the admin default; provider→required-vars matrix incl. Azure).

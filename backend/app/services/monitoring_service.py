@@ -18,22 +18,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.enums import ExtractionStatus
 from app.models.price_history import PriceRecord
 from app.models.product import Product
+from app.services.selector_profile_service import host_for_url
 
 _OK = ExtractionStatus.OK.value
 
 
-def _failure_category(status: str) -> str:
-    """Group a failing status into 'blocked' / 'captcha' / 'other' (Item 15).
+# Failing statuses that warrant their own bucket, because each implies a
+# different remedy: rotate proxies (blocked/captcha, Item 15) vs regenerate the
+# host's selector (selector_miss, Item 16). Everything else is 'other'.
+_FAILURE_CATEGORIES = {
+    ExtractionStatus.BLOCKED.value: "blocked",
+    ExtractionStatus.CAPTCHA.value: "captcha",
+    ExtractionStatus.SELECTOR_MISS.value: "selector_miss",
+}
 
-    A block (429/503/IP-ban) and a CAPTCHA interstitial are anti-blocking signals
-    worth distinguishing from ordinary extraction/HTTP failures, so a block spike
-    is visible on ``GET /products/failing`` without a new route.
+
+def _failure_category(status: str) -> str:
+    """Group a failing status into a remediation bucket, or ``other``.
+
+    Surfaced on ``GET /products/failing`` so a block spike and a markup-drift
+    spike are each visible — and distinguishable — without a new route.
     """
-    if status == ExtractionStatus.BLOCKED.value:
-        return "blocked"
-    if status == ExtractionStatus.CAPTCHA.value:
-        return "captcha"
-    return "other"
+    return _FAILURE_CATEGORIES.get(status, "other")
 
 
 @dataclass(frozen=True)
@@ -45,6 +51,9 @@ class FailingProduct:
     latest_captured_at: datetime
     last_success_at: datetime | None
     failure_category: str
+    # Normalised selector-profile host key — lets a drift affecting every product
+    # on one retailer be read as a single host, which is the unit a heal acts on.
+    host: str
 
 
 async def find_failing_products(
@@ -131,6 +140,7 @@ async def find_failing_products(
             latest_captured_at=latest[p.id][1],
             last_success_at=last_success.get(p.id),
             failure_category=_failure_category(latest[p.id][0]),
+            host=host_for_url(str(p.url)),
         )
         for p in products
     ]

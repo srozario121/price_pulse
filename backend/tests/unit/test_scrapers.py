@@ -111,7 +111,9 @@ async def test_generic_scraper_no_match() -> None:
         scraper = GenericScraper(css_selector=".price_color")
         result = await scraper.fetch("http://x.com")
 
-    assert result.extraction_status == ExtractionStatus.EXTRACTION_FAILED
+    # Item 16: a loaded page where no selector matched is markup drift
+    # (SELECTOR_MISS → regeneration), not a parse failure.
+    assert result.extraction_status == ExtractionStatus.SELECTOR_MISS
     assert result.price is None
 
 
@@ -282,7 +284,11 @@ async def test_amazon_scraper_dom_fallback_when_no_ldjson() -> None:
 
 @pytest.mark.asyncio
 async def test_amazon_scraper_no_price_anywhere() -> None:
-    """Neither ld+json nor the DOM fallback yields a price → extraction failed."""
+    """Neither ld+json nor the DOM fallback yields a price → selector miss.
+
+    Item 16: the page loaded and was not blocked, so the only explanation is that
+    Amazon moved its markup — which is what triggers selector regeneration.
+    """
     from app.scrapers.amazon import AmazonScraper
 
     mock_pw_cm, _ = _make_playwright_mock(
@@ -293,7 +299,7 @@ async def test_amazon_scraper_no_price_anywhere() -> None:
         scraper = AmazonScraper()
         result = await scraper.fetch("https://amazon.com/dp/B001")
 
-    assert result.extraction_status == ExtractionStatus.EXTRACTION_FAILED
+    assert result.extraction_status == ExtractionStatus.SELECTOR_MISS
     assert result.price is None
 
 

@@ -28,7 +28,9 @@ from app.models import (  # noqa: F401
     notification_log,
     price_history,
     product,
+    product_llm_credential,
     scrape_job,
+    selector_profile,
     source_preset,
 )
 

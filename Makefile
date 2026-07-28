@@ -127,7 +127,7 @@ e2e-down:       ## Tear down the e2e overlay stack and remove its volumes
 test-e2e:       ## Full executed E2E: up e2e stack → run backend pytest-bdd + frontend playwright-bdd → down
 	$(MAKE) e2e-up
 	@echo "--- Backend BDD (pytest-bdd) ---"; \
-	( cd backend && uv run pytest tests/e2e -o addopts="" -m live_api ); backend_rc=$$?; \
+	( cd backend && uv run pytest tests/e2e -o addopts="" -m "live_api and not live_llm" ); backend_rc=$$?; \
 	echo "--- Frontend BDD (playwright-bdd) ---"; \
 	( cd frontend && E2E_BASE_URL=http://localhost npm run test:e2e:bdd ); frontend_rc=$$?; \
 	$(MAKE) e2e-down; \
@@ -149,6 +149,45 @@ test-e2e-smoke: ## Fast E2E: up e2e stack → run only @smoke-tagged scenarios �
 	  echo "E2E smoke FAILED (backend=$$backend_rc frontend=$$frontend_rc)"; exit 1; \
 	fi; \
 	echo "E2E smoke passed."
+
+# ---------------------------------------------------------------------------
+# Live LLM tests (Item 16) — these SPEND REAL MONEY on a real provider
+# ---------------------------------------------------------------------------
+# Every other selector test substitutes a Pydantic AI FunctionModel with
+# ALLOW_MODEL_REQUESTS=False, so nothing else in the suite can reach a provider.
+# These two targets are the only way to exercise a real key. Both are opt-in,
+# excluded from `make test` and from CI, and skip cleanly when no key is set.
+#
+# The LLM_* vars are exported from the root .env because pydantic-settings
+# resolves env_file relative to the CWD — pytest runs in backend/, which has no
+# .env of its own, so without this the key would never reach Settings.
+
+# Export LLM_*/SELECTOR_* from the root .env into the recipe's environment.
+# Only those keys are sourced, via a mktemp copy: sourcing the whole .env would
+# execute every line, and one value containing a space or a shell metacharacter
+# would break the target in a way that looks like a test failure.
+LOAD_LLM_ENV = tmp=$$(mktemp); grep -E '^(LLM_|AZURE_OPENAI_|SELECTOR_)' .env > $$tmp 2>/dev/null || true; set -a; . $$tmp; set +a; rm -f $$tmp
+
+.PHONY: test-llm-live
+test-llm-live:  ## Live LLM smoke test — one real provider call (COSTS MONEY; needs LLM_API_KEY)
+	@$(LOAD_LLM_ENV); \
+	if [ -z "$$LLM_API_KEY" ]; then \
+	  echo "No LLM_API_KEY in .env — the live tests will skip."; \
+	fi; \
+	cd backend && uv run pytest tests/live -o addopts="" -m live_api -v -s
+
+.PHONY: test-e2e-llm
+test-e2e-llm:   ## Live self-healing loop against the e2e stack (COSTS MONEY; needs LLM_API_KEY)
+	@$(LOAD_LLM_ENV); \
+	if [ -z "$$LLM_API_KEY" ]; then \
+	  echo "ERROR: test-e2e-llm needs LLM_API_KEY set in .env"; exit 1; \
+	fi; \
+	$(MAKE) e2e-up && \
+	( cd backend && uv run pytest tests/e2e -o addopts="" -m "live_api and live_llm" -v ); rc=$$?; \
+	if [ $$rc -ne 0 ]; then echo "=== celery-playwright logs ==="; $(E2E_COMPOSE) logs --tail=120 celery-playwright; fi; \
+	$(MAKE) e2e-down; \
+	if [ $$rc -ne 0 ]; then echo "Live LLM E2E FAILED"; exit 1; fi; \
+	echo "Live LLM E2E passed."
 
 .PHONY: generate-types
 generate-types: ## Generate TypeScript types from backend/openapi.json

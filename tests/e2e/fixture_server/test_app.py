@@ -43,6 +43,38 @@ def test_get_price_json() -> None:
     assert resp.json() == {"slug": "gadget", "price": "12.34"}
 
 
+def test_drifted_layout_hides_the_price_from_the_standard_selector() -> None:
+    # Arrange / Act — Item 16: simulate a retailer rotating its DOM
+    client.put("/fixtures/drift-a/price", json={"price": "199.99"})
+    client.put("/fixtures/drift-a/layout", json={"layout": "drifted"})
+    html = client.get("/fixtures/drift-a").text
+
+    # Assert — the price is still served, just not where `.price` looks
+    assert "199.99" in html
+    assert "class='price'" not in html
+    assert "q9v-amount" in html
+
+
+def test_drifted_layout_carries_decoy_numbers() -> None:
+    # A generated selector that merely finds *a* number must not pass the
+    # scenario, so the drifted page ships a was-price and a review count.
+    client.put("/fixtures/drift-b/layout", json={"layout": "drifted"})
+    html = client.get("/fixtures/drift-b").text
+    assert "499.00" in html
+    assert "318 reviews" in html
+
+
+def test_layout_can_be_switched_back_to_standard() -> None:
+    client.put("/fixtures/drift-c/layout", json={"layout": "drifted"})
+    client.put("/fixtures/drift-c/layout", json={"layout": "standard"})
+    assert "class='price'" in client.get("/fixtures/drift-c").text
+
+
+def test_unknown_layout_is_422() -> None:
+    resp = client.put("/fixtures/drift-d/layout", json={"layout": "sideways"})
+    assert resp.status_code == 422
+
+
 def test_unknown_slug_404() -> None:
     # Arrange / Act
     resp = client.get("/fixtures/does-not-exist")

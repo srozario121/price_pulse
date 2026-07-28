@@ -1,6 +1,6 @@
 [project]
 name = "price-pulse-backend"
-version = "0.1.6"
+version = "0.1.7"
 description = "Price Pulse backend — FastAPI application and Celery workers"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,6 +23,12 @@ dependencies = [
     "parsel>=1.9",
     "celery-redbeat>=0.13",
     "celery-aio-pool>=0.1.0rc8",
+    # Item 16: provider-agnostic LLM selector generation. The `openai` extra also
+    # covers Azure OpenAI and OpenRouter (both ride the OpenAI-compatible client),
+    # so these two extras reach all four supported providers. `-slim` keeps the
+    # image free of the provider SDKs we do not use.
+    "pydantic-ai-slim[anthropic,openai]>=1.0",
+    "cryptography>=42.0",  # Item 16: Fernet at-rest encryption for BYO LLM API keys
 ]
 
 [dependency-groups]
@@ -56,6 +62,7 @@ markers = [
     "integration: marks tests that require a real database",
     "live_amazon: marks Amazon live-scrape tests; requires celery-playwright service running; flaky in CI due to bot detection — run manually only",
     "smoke: marks the @smoke-tagged E2E behaviour subset run on every PR (via make test-e2e-smoke)",
+    "live_llm: marks tests that call a real LLM provider and spend money; opt-in via make test-llm-live / make test-e2e-llm, never in CI",
 ]
 
 [tool.ruff]

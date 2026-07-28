@@ -25,8 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.alert import PriceAlert
 from app.models.product import Product
-from app.scrapers.registry import get_scraper
-from app.services import price_service
+from app.services import scrape_runner
 
 logger = structlog.get_logger(__name__)
 
@@ -43,9 +42,16 @@ async def scrape_sync(
 ) -> dict[str, object]:
     """Fetch + extract + persist for *product_id* inline, returning the result.
 
-    Mirrors ``tasks.scrape.scrape_product`` but runs in-request so the caller
-    receives the extraction outcome once the ``PriceRecord`` exists and alerts
-    have been evaluated — no queue, no polling.
+    Runs the **same** ``services.scrape_runner.run_scrape`` body as
+    ``tasks.scrape.scrape_product``, just in-request so the caller receives the
+    extraction outcome once the ``PriceRecord`` exists and alerts have been
+    evaluated — no queue, no polling.
+
+    Sharing the body rather than mirroring it is deliberate. This hook once held
+    a copy, and the copy silently stopped matching: it never learned to pass the
+    host's healed selector (Item 16), so the E2E stack could promote a selector
+    and then keep recording ``selector_miss`` forever — a harness that could not
+    observe the behaviour it existed to verify.
     """
     product = await db.scalar(select(Product).where(Product.id == product_id))
     if product is None:
@@ -54,20 +60,7 @@ async def scrape_sync(
             detail=f"Product {product_id} not found",
         )
 
-    source_type = str(product.source_type)
-    scraper = await get_scraper(
-        source_type,
-        db,
-        css_selector=product.css_selector,
-        css_selector_currency=product.css_selector_currency,
-    )
-    scraped = await scraper.fetch(product.url)
-
-    record = await price_service.record_price(
-        product_id=product_id,
-        scraped_result=scraped,
-        session=db,
-    )
+    record = await scrape_runner.run_scrape(db, product)
     await db.flush()
 
     logger.info(

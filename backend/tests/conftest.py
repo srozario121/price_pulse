@@ -78,7 +78,9 @@ async def db_engine():
         notification_log,
         price_history,
         product,
+        product_llm_credential,
         scrape_job,
+        selector_profile,
         source_preset,
     )
 
@@ -196,7 +198,9 @@ async def pg_engine(pg_container):
         notification_log,
         price_history,
         product,
+        product_llm_credential,
         scrape_job,
+        selector_profile,
         source_preset,
     )
 
