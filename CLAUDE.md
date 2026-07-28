@@ -239,6 +239,7 @@ Copy `.env.example` to `.env`. Key variables:
 | `LLM_PROVIDER` | `openai` | Selector-generation provider: `openai`/`anthropic`/`azure`/`openrouter` (validated at startup) |
 | `LLM_MODEL` | `gpt-5.2` | Model name; for Azure the *deployment* name, for OpenRouter `<provider>/<model>` |
 | `LLM_API_KEY` | `` (empty ⇒ admin default disabled) | Admin-default provider key. Empty **and** no product BYO key ⇒ generation is a no-op; scrapes still complete, recording `selector_miss` |
+| `LLM_BASE_URL` | `` (empty ⇒ provider default) | Custom API endpoint (gateway / proxy / self-hosted OpenAI-compatible server). Only `openai`/`anthropic` accept one — set with `azure`/`openrouter` it is rejected at startup, not ignored. Applies to the **admin default only**: a per-product BYO key always reaches the provider's real endpoint |
 | `AZURE_OPENAI_ENDPOINT` | `` | Required when `LLM_PROVIDER=azure` and a key is set |
 | `AZURE_OPENAI_API_VERSION` | `` | **Required** for a classic `https://<resource>.openai.azure.com` endpoint; must be **empty** for a `…/openai/v1` endpoint. Both mistakes fail at startup |
 | `SELECTOR_HTML_MAX_BYTES` | `120000` | Cap on trimmed page HTML sent to the LLM per generation call |

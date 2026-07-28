@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import (
     LLM_PROVIDERS,
     azure_config_error,
+    base_url_config_error,
     is_azure_v1_endpoint,
     settings,
 )
@@ -75,6 +76,9 @@ class LLMConfig:
     api_key: str
     azure_endpoint: str | None = None
     azure_api_version: str | None = None
+    # Custom API endpoint (gateway / proxy / self-hosted OpenAI-compatible
+    # server). None ⇒ the provider's own default.
+    base_url: str | None = None
     # Where the credential came from — logged so an operator can tell whose key
     # (and whose bill) a generation used. Never carries the key itself.
     source: str = "admin_default"
@@ -98,6 +102,7 @@ def _admin_default_config() -> LLMConfig | None:
         api_key=settings.LLM_API_KEY,
         azure_endpoint=settings.AZURE_OPENAI_ENDPOINT or None,
         azure_api_version=settings.AZURE_OPENAI_API_VERSION or None,
+        base_url=settings.LLM_BASE_URL or None,
         source="admin_default",
     )
 
@@ -122,6 +127,12 @@ async def resolve_llm_config(session: AsyncSession, product: Product) -> LLMConf
                 api_key=api_key,
                 azure_endpoint=credential.azure_endpoint,
                 azure_api_version=credential.azure_api_version,
+                # Deliberately NOT inheriting settings.LLM_BASE_URL: that gateway
+                # is the deployer's, and this key is the user's. Sending someone
+                # else's credential to infrastructure they did not choose is a
+                # leak, so a BYO credential always reaches the provider's own
+                # endpoint (or its own azure_endpoint).
+                base_url=None,
                 source="product_byo",
             )
         logger.warning(
@@ -143,18 +154,25 @@ def build_model(config: LLMConfig) -> Model:
         raise LLMConfigError(
             f"Unsupported LLM provider {config.provider!r}; expected one of {LLM_PROVIDERS}"
         )
+    # Raises for a provider that cannot honour a custom endpoint, so a base URL
+    # is never silently dropped while traffic keeps hitting the public API.
+    endpoint = _base_url_kwargs(config)
 
     if config.provider == "openai":
         from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.openai import OpenAIProvider
 
-        return OpenAIChatModel(config.model, provider=OpenAIProvider(api_key=config.api_key))
+        return OpenAIChatModel(
+            config.model, provider=OpenAIProvider(api_key=config.api_key, **endpoint)
+        )
 
     if config.provider == "anthropic":
         from pydantic_ai.models.anthropic import AnthropicModel
         from pydantic_ai.providers.anthropic import AnthropicProvider
 
-        return AnthropicModel(config.model, provider=AnthropicProvider(api_key=config.api_key))
+        return AnthropicModel(
+            config.model, provider=AnthropicProvider(api_key=config.api_key, **endpoint)
+        )
 
     if config.provider == "openrouter":
         from pydantic_ai.models.openrouter import OpenRouterModel
@@ -175,6 +193,20 @@ def build_model(config: LLMConfig) -> Model:
     from pydantic_ai.models.openai import OpenAIChatModel
 
     return OpenAIChatModel(config.model, provider=_azure_provider(config))
+
+
+def _base_url_kwargs(config: LLMConfig) -> dict[str, str]:
+    """Return the ``base_url`` kwarg for *config*'s provider, or an empty dict.
+
+    Empty means "use the provider's own default endpoint". Raises when a base URL
+    is set for a provider that cannot accept one — dropping it silently would
+    leave traffic on the public API while the operator believed it was routed
+    through their gateway.
+    """
+    error = base_url_config_error(config.provider, config.base_url)
+    if error:
+        raise LLMConfigError(error)
+    return {"base_url": config.base_url} if config.base_url else {}
 
 
 def _azure_provider(config: LLMConfig) -> object:

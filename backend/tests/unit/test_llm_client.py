@@ -21,6 +21,7 @@ from app.services.llm.client import (
 
 _AZURE_CLASSIC = "https://my-resource.openai.azure.com"
 _AZURE_V1 = "https://my-resource.openai.azure.com/openai/v1"
+_GATEWAY = "https://llm-gateway.internal/v1"
 
 
 # ── build_model ────────────────────────────────────────────────────────────────
@@ -86,6 +87,67 @@ class TestBuildModel:
 
         # Assert
         assert type(model).__name__ == "OpenAIChatModel"
+
+
+class TestCustomBaseUrl:
+    """LLM_BASE_URL — routing generation through a gateway / proxy / self-hosted server."""
+
+    def test_openai_uses_the_public_api_by_default(self):
+        # Arrange / Act
+        model = build_model(LLMConfig(provider="openai", model="gpt-5.2", api_key="sk-x"))
+
+        # Assert
+        assert str(model.client.base_url).rstrip("/") == "https://api.openai.com/v1"
+
+    def test_openai_honours_a_custom_base_url(self):
+        # Arrange
+        config = LLMConfig(provider="openai", model="gpt-5.2", api_key="sk-x", base_url=_GATEWAY)
+
+        # Act
+        model = build_model(config)
+
+        # Assert
+        assert str(model.client.base_url).rstrip("/") == _GATEWAY
+
+    def test_anthropic_honours_a_custom_base_url(self):
+        # Arrange
+        config = LLMConfig(
+            provider="anthropic", model="claude-sonnet-4-5", api_key="sk-x", base_url=_GATEWAY
+        )
+
+        # Act
+        model = build_model(config)
+
+        # Assert
+        assert str(model.client.base_url).rstrip("/") == _GATEWAY
+
+    def test_openrouter_rejects_a_base_url(self):
+        # Arrange — OpenRouter's endpoint is fixed by the service
+        config = LLMConfig(
+            provider="openrouter",
+            model="anthropic/claude-sonnet-4.6",
+            api_key="sk-x",
+            base_url=_GATEWAY,
+        )
+
+        # Act / Assert — loud, because silently ignoring it would leave traffic
+        # on the public API while the operator believed it was routed away
+        with pytest.raises(LLMConfigError, match="not supported for provider 'openrouter'"):
+            build_model(config)
+
+    def test_azure_rejects_a_base_url(self):
+        # Arrange — Azure carries its endpoint in azure_endpoint instead
+        config = LLMConfig(
+            provider="azure",
+            model="my-deployment",
+            api_key="sk-x",
+            azure_endpoint=_AZURE_V1,
+            base_url=_GATEWAY,
+        )
+
+        # Act / Assert
+        with pytest.raises(LLMConfigError, match="not supported for provider 'azure'"):
+            build_model(config)
 
 
 class TestBuildModelRejections:
@@ -179,6 +241,49 @@ class TestResolveLLMConfig:
         assert config.provider == "anthropic"
         assert config.api_key == "sk-byo"
         assert config.source == "product_byo"
+
+    async def test_admin_default_carries_the_configured_base_url(
+        self, db_session, product, monkeypatch
+    ):
+        # Arrange
+        monkeypatch.setattr(llm_client.settings, "LLM_API_KEY", "sk-admin")
+        monkeypatch.setattr(llm_client.settings, "LLM_PROVIDER", "openai")
+        monkeypatch.setattr(llm_client.settings, "LLM_MODEL", "gpt-5.2")
+        monkeypatch.setattr(llm_client.settings, "LLM_BASE_URL", _GATEWAY)
+
+        # Act
+        config = await resolve_llm_config(db_session, product)
+
+        # Assert
+        assert config.base_url == _GATEWAY
+
+    async def test_byo_credential_does_not_inherit_the_admin_base_url(
+        self, db_session, product, monkeypatch
+    ):
+        # Arrange — the deployment routes its own key through a gateway, and a
+        # product brings its own key
+        monkeypatch.setattr(llm_client.settings, "LLM_API_KEY", "sk-admin")
+        monkeypatch.setattr(llm_client.settings, "LLM_PROVIDER", "openai")
+        monkeypatch.setattr(llm_client.settings, "LLM_MODEL", "gpt-5.2")
+        monkeypatch.setattr(llm_client.settings, "LLM_BASE_URL", _GATEWAY)
+        db_session.add(
+            ProductLLMCredential(
+                id=1,
+                product_id=product.id,
+                provider="openai",
+                model="gpt-5.2",
+                encrypted_api_key=encrypt_secret("sk-byo"),
+            )
+        )
+        await db_session.flush()
+
+        # Act
+        config = await resolve_llm_config(db_session, product)
+
+        # Assert — the user's key must not be sent to the deployer's gateway;
+        # that is infrastructure they did not choose
+        assert config.source == "product_byo"
+        assert config.base_url is None
 
     async def test_admin_default_is_used_when_no_byo_row_exists(
         self, db_session, product, monkeypatch

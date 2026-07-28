@@ -118,6 +118,22 @@ them from inside a Celery worker hours after deploy. This is a deliberate
 refinement of the plan's "requires both endpoint and api_version", which did not
 match the SDK.
 
+### Custom endpoints are deployment-level, not credential-level
+
+`LLM_BASE_URL` routes generation through a gateway, egress proxy, or self-hosted
+OpenAI-compatible server. Only `openai` and `anthropic` accept one; OpenRouter's
+endpoint is fixed and Azure carries its own, so setting it there is rejected at
+startup rather than ignored — silently dropping it would leave traffic on the
+public API while the operator believed it was routed away.
+
+It applies to the **admin default only**. A per-product BYO key deliberately does
+*not* inherit it and always reaches the provider's real endpoint: that gateway
+belongs to the deployer while the key belongs to the user, and forwarding
+someone's credential to infrastructure they did not choose is a leak. The
+consequence — BYO keys need direct egress — is the correct trade against silently
+exposing them. If a deployment needs BYO traffic gatewayed too, the credential
+should grow its own `base_url` field so the choice is the key owner's.
+
 ### Two credential scopes, no auth system
 
 The repo has no users or roles, so credentials are scoped without one:

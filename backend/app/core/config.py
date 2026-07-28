@@ -22,6 +22,11 @@ _PROXY_SCHEMES = ("http", "https", "socks5", "socks5h", "socks4")
 # API validate against the same set — one list, two boundaries.
 LLM_PROVIDERS = ("openai", "anthropic", "azure", "openrouter")
 
+# Providers whose client accepts a custom API endpoint. OpenRouter's is fixed by
+# the service, and Azure carries its endpoint in AZURE_OPENAI_ENDPOINT — so
+# setting LLM_BASE_URL alongside either is a configuration mistake, not a no-op.
+BASE_URL_PROVIDERS = ("openai", "anthropic")
+
 
 def is_azure_v1_endpoint(endpoint: str) -> bool:
     """True when *endpoint* targets Azure's v1 API (or a Foundry serverless model).
@@ -30,6 +35,29 @@ def is_azure_v1_endpoint(endpoint: str) -> bool:
     apart is what lets every boundary report a precise error.
     """
     return endpoint.rstrip("/").endswith("/openai/v1")
+
+
+def base_url_config_error(
+    provider: str,
+    base_url: str | None,
+    *,
+    field_name: str = "LLM_BASE_URL",
+) -> str | None:
+    """Return why *base_url* cannot be used with *provider*, or ``None`` if it can.
+
+    Silently ignoring a base URL the provider cannot honour would be the worst
+    outcome: traffic would keep going to the public API while the operator
+    believed it was routed through their gateway.
+    """
+    if not base_url:
+        return None
+    if provider not in BASE_URL_PROVIDERS:
+        return (
+            f"{field_name} is not supported for provider {provider!r} — only "
+            f"{' and '.join(BASE_URL_PROVIDERS)} accept a custom endpoint "
+            f"(OpenRouter's is fixed; Azure uses AZURE_OPENAI_ENDPOINT)"
+        )
+    return None
 
 
 def azure_config_error(
@@ -127,6 +155,12 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "openai"
     LLM_MODEL: str = "gpt-5.2"
     LLM_API_KEY: str = ""
+    # Override the provider's API endpoint — for an LLM gateway, an egress proxy,
+    # or a self-hosted OpenAI-compatible server. Empty ⇒ the provider's own
+    # default (https://api.openai.com/v1 for OpenAI). Only ``openai`` and
+    # ``anthropic`` accept one: OpenRouter's endpoint is fixed, and Azure carries
+    # its endpoint in AZURE_OPENAI_ENDPOINT instead.
+    LLM_BASE_URL: str = ""
     # Azure-only — required (both) when LLM_PROVIDER=azure.
     AZURE_OPENAI_ENDPOINT: str = ""
     AZURE_OPENAI_API_VERSION: str = ""
@@ -212,6 +246,21 @@ class Settings(BaseSettings):
             raise ValueError(f"LLM_PROVIDER must be one of {LLM_PROVIDERS}, got {v!r}")
         return provider
 
+    @field_validator("LLM_BASE_URL")
+    @classmethod
+    def llm_base_url_well_formed(cls, v: str) -> str:
+        """Reject a malformed base URL at startup rather than on the first call."""
+        url = v.strip()
+        if not url:
+            return ""
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError(
+                f"LLM_BASE_URL must be an http(s) URL like "
+                f"https://gateway.example.com/v1, got {v!r}"
+            )
+        return url
+
     @field_validator(
         "SELECTOR_HTML_MAX_BYTES",
         "SELECTOR_MAX_REGEN_ATTEMPTS",
@@ -241,13 +290,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_azure_llm_config(self) -> "Settings":
-        """Azure needs a coherent endpoint/API-version pair — fail fast, not mid-scrape.
+        """Check the admin-default LLM endpoint settings — fail fast, not mid-scrape.
 
-        Only enforced when the admin default is actually usable (a key is set); an
-        unconfigured deployment that never generates selectors must still boot.
-        The rule itself lives in :func:`azure_config_error`, shared with the BYO
-        credential body and model construction.
+        Azure's endpoint/API-version pair is only enforced when the admin default
+        is actually usable (a key is set); an unconfigured deployment that never
+        generates selectors must still boot. ``LLM_BASE_URL`` is checked
+        unconditionally, because a base URL set against a provider that cannot
+        honour it is a mistake whether or not a key is present.
+
+        Both rules live in shared helpers, applied identically by the BYO
+        credential body and by model construction.
         """
+        base_url_error = base_url_config_error(self.LLM_PROVIDER, self.LLM_BASE_URL)
+        if base_url_error:
+            raise ValueError(base_url_error)
         if self.LLM_PROVIDER != "azure" or not self.LLM_API_KEY:
             return self
         error = azure_config_error(self.AZURE_OPENAI_ENDPOINT, self.AZURE_OPENAI_API_VERSION)

@@ -14,6 +14,7 @@ from app.core.config import (
     LLM_PROVIDERS,
     Settings,
     azure_config_error,
+    base_url_config_error,
     is_azure_v1_endpoint,
 )
 
@@ -23,6 +24,7 @@ _BASE = {
 }
 _AZURE_CLASSIC = "https://my-resource.openai.azure.com"
 _AZURE_V1 = "https://my-resource.openai.azure.com/openai/v1"
+_GATEWAY = "https://llm-gateway.internal/v1"
 
 
 def _settings(**overrides) -> Settings:
@@ -128,6 +130,42 @@ class TestAzureConfigRule:
         )
         assert "azure_endpoint" in message
         assert "AZURE_OPENAI_ENDPOINT" not in message
+
+
+class TestLLMBaseUrl:
+    def test_defaults_to_empty_meaning_the_providers_own_endpoint(self):
+        assert _settings().LLM_BASE_URL == ""
+
+    def test_accepts_an_http_url_for_a_supporting_provider(self):
+        settings = _settings(LLM_PROVIDER="openai", LLM_BASE_URL=_GATEWAY)
+        assert settings.LLM_BASE_URL == _GATEWAY
+
+    def test_whitespace_is_stripped(self):
+        assert _settings(LLM_BASE_URL=f"  {_GATEWAY}  ").LLM_BASE_URL == _GATEWAY
+
+    @pytest.mark.parametrize("bad", ["not-a-url", "ftp://host/v1", "https://", "//host/v1"])
+    def test_malformed_url_is_rejected_at_startup(self, bad):
+        with pytest.raises(ValidationError, match="LLM_BASE_URL must be an http"):
+            _settings(LLM_BASE_URL=bad)
+
+    @pytest.mark.parametrize("provider", ["openrouter", "azure"])
+    def test_rejected_for_a_provider_that_cannot_honour_it(self, provider):
+        # Silently ignoring it would leave traffic on the public API while the
+        # operator believed it was routed through their gateway
+        with pytest.raises(ValidationError, match="not supported for provider"):
+            _settings(LLM_PROVIDER=provider, LLM_BASE_URL=_GATEWAY)
+
+    def test_rejected_even_without_an_api_key(self):
+        # A base URL against an incompatible provider is a mistake whether or not
+        # generation is currently enabled
+        with pytest.raises(ValidationError, match="not supported for provider"):
+            _settings(LLM_PROVIDER="openrouter", LLM_API_KEY="", LLM_BASE_URL=_GATEWAY)
+
+    def test_base_url_config_error_names_the_field(self):
+        assert base_url_config_error("openai", _GATEWAY) is None
+        assert base_url_config_error("openai", None) is None
+        assert base_url_config_error("azure", None) is None
+        assert "LLM_BASE_URL" in base_url_config_error("azure", _GATEWAY)
 
 
 class TestSelectorKnobs:
