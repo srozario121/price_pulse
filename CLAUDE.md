@@ -18,7 +18,7 @@ Ask only the questions that are genuinely unclear — do not ask about things al
 
 ```bash
 # Install all dependencies (backend + frontend) and wire pre-commit hooks
-make install        # uv sync (workspace) + cd frontend && npm install + pre-commit install
+make install        # uv sync --all-packages (workspace) + cd frontend && npm install + pre-commit install
 
 # Start full stack (Docker Compose)
 make up                          # production-like stack (detached)
