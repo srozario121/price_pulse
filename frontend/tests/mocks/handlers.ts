@@ -220,11 +220,33 @@ export const handlers = [
   }),
 
   // Prices
-  http.get('/api/v1/products/:id/prices', () => {
+  //
+  // Enforces the real endpoint's `limit` bound (le=100 → 422). The mock used to
+  // accept any limit and echo it back, so PriceChart requesting 200 looked fine
+  // in every test while failing against the real API on every request. A mock
+  // that is more permissive than the thing it stands in for cannot catch a
+  // contract mismatch — it manufactures one.
+  http.get('/api/v1/products/:id/prices', ({ request }) => {
+    const limit = Number(new URL(request.url).searchParams.get('limit') ?? 20);
+    if (limit > 100) {
+      return HttpResponse.json(
+        {
+          detail: [
+            {
+              type: 'less_than_equal',
+              loc: ['query', 'limit'],
+              msg: 'Input should be less than or equal to 100',
+            },
+          ],
+        },
+        { status: 422 }
+      );
+    }
+    const items = mockPrices.slice(0, limit);
     const response: PaginatedResponse<PriceRecordRead> = {
-      items: mockPrices,
+      items,
       total: mockPrices.length,
-      limit: 200,
+      limit,
       offset: 0,
     };
     return HttpResponse.json(response);

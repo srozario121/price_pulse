@@ -21,7 +21,17 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
-    exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**'],
+    // .features-gen/ holds the Playwright specs playwright-bdd generates from
+    // docs/behaviour/*.feature. It is gitignored but survives on disk, so after
+    // any e2e run vitest would collect those specs and fail on them — `make
+    // test-e2e` followed by `make quality` broke the unit suite. CI never saw it
+    // because the e2e and quality jobs run on separate runners.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'tests/e2e/**',
+      '**/.features-gen/**',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
