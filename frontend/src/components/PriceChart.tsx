@@ -48,17 +48,28 @@ interface PriceChartProps {
   productId: number;
 }
 
+// The prices endpoint caps `limit` at 100 and returns 422 above it. Requesting
+// 200 made every single chart request fail, so the component rendered its
+// "no price data" empty state for every product forever — the error path and the
+// genuinely-empty path looked identical, which is why it went unnoticed.
+// Keep this in step with the `le=100` bound on GET /products/{id}/prices.
+const MAX_PRICE_POINTS = 100;
+
 export function PriceChart({ productId }: PriceChartProps) {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
-  const { data, isLoading } = usePrices(productId, {
+  const { data, isLoading, isError } = usePrices(productId, {
     fromDt: dateRange?.from ? formatISO(dateRange.from) : undefined,
     toDt: dateRange?.to ? formatISO(dateRange.to) : undefined,
-    limit: 200,
+    limit: MAX_PRICE_POINTS,
   });
 
   const points =
     data?.items.filter((r) => r.price !== null).reverse() ?? [];
+
+  // A short series needs visible marks: a single point draws a zero-length line,
+  // so with dots suppressed the chart looks empty even when the data arrived.
+  const showDots = points.length <= 30;
 
   if (isLoading) {
     return <Skeleton className="h-64 w-full" />;
@@ -100,7 +111,19 @@ export function PriceChart({ productId }: PriceChartProps) {
         )}
       </div>
 
-      {points.length === 0 ? (
+      {isError ? (
+        // Distinct from the empty state on purpose. Collapsing "the request
+        // failed" into "there is no data" is what hid the 422 above: the chart
+        // confidently reported an absence that was really a broken request.
+        <Card>
+          <CardContent
+            role="alert"
+            className="flex items-center justify-center py-12 text-destructive"
+          >
+            Could not load price history. Try again shortly.
+          </CardContent>
+        </Card>
+      ) : points.length === 0 ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
             No price data available for this range.
@@ -127,8 +150,9 @@ export function PriceChart({ productId }: PriceChartProps) {
               dataKey="price"
               stroke="hsl(var(--primary))"
               strokeWidth={2}
-              dot={false}
+              dot={showDots ? { r: 3 } : false}
               activeDot={{ r: 4 }}
+              isAnimationActive={false}
             />
           </LineChart>
         </ResponsiveContainer>

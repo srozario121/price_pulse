@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (Price chart)
+
+- **The price-history chart never rendered — for any product, since it was written.** `PriceChart` requested `limit: 200` from `GET /products/{id}/prices`, which caps `limit` at 100 and returns **422**. Every request failed, so the component fell through to its "No price data available for this range" empty state. Now requests the API's maximum, via a named `MAX_PRICE_POINTS` constant documenting the coupling.
+- **A failed request no longer masquerades as an absence of data.** The chart had no error branch, so a broken request and a genuinely empty series were indistinguishable — which is exactly why the above went unnoticed. Errors now render a distinct `role="alert"` state.
+- **A single price record now draws a visible mark.** One point is a zero-length line, and with `dot={false}` the chart looked empty immediately after a user's first scrape. Dots are shown for series of ≤ 30 points.
+
+### Changed (Test coverage for the chart)
+
+- **The MSW price handler now enforces the API's `limit` bound** (422 above 100) instead of accepting any value and echoing it back. A mock more permissive than the endpoint it stands in for cannot catch a contract mismatch — it manufactures one.
+- **Replaced two `PriceChart` assertions that could never fail** (`expect(container).toBeDefined()`, and `expect(querySelector(...)).toBeDefined()` — which passes on `null`) with five that assert the requested limit, a drawn data series, the single-point mark, the error state, and the empty state. Two of them fail against the old code.
+- **New live E2E scenario `@PP-E2E-046` (`@smoke`)**: seeds a product against the fixture server, scrapes it through the real API, and asserts the chart plots a point. Verified to fail against a frontend built with the original `limit: 200` — unlike the unit tests, it talks to the real backend, which is what makes it able to catch a request the API rejects.
+- **jsdom size/`ResizeObserver` polyfills** in the vitest setup. Recharts' `ResponsiveContainer` renders nothing when it measures zero, which jsdom always reports, so chart tests previously could not assert that anything was drawn.
+
 ### Added (Self-healing selectors — Item 16)
 
 - **LLM-generated, self-healing price selectors**: when deterministic extraction finds no price on a page that loaded and was **not** blocked, an LLM generates a replacement CSS selector from the page HTML, which is validated against that same page, stored per host, and reused by every subsequent scrape of that host with **no** further LLM calls. Markup drift becomes a one-time, self-remediated blip instead of ongoing silent degradation, and one heal fixes every product on the host.

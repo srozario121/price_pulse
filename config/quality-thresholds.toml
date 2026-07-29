@@ -153,11 +153,21 @@ eslint_max_warnings = 0
 # higher of the two and both environments pass. The residual one line is a real
 # environment difference in the integration tier, not measurement noise from the
 # core — that part is now identical.
+#
+# Re-baselined 2026-07-29 frontend (1229 -> 1235): the PriceChart fix. Almost all
+# of it is on PriceChart.tsx (31 flagged lines, 28 of them the PriceChart ∩
+# ProductDetail pair), and it is previously-untested code becoming tested rather
+# than new redundancy: Recharts' <ResponsiveContainer> renders nothing when it
+# measures zero, which jsdom always reported, so the chart's render path was
+# covered by NEITHER test before the size/ResizeObserver polyfill was added to
+# tests/setup.ts. Now both the component test and the page test that embeds it
+# exercise those lines — same-tier overlap that only exists because the code is
+# finally reachable in tests at all. Captured on Node 20, matching CI.
 baseline_backend_duplicate_lines = 1722
-baseline_frontend_duplicate_lines = 1229
+baseline_frontend_duplicate_lines = 1235
 
 # Enforcement ceilings (zero tolerance for net-new duplicates from this point).
 # check_coverage_overlap.py / check_coverage_overlap_frontend.js exit 1 when the
 # actual count exceeds these; equal-or-below passes.
 max_intra_tier_duplicate_lines_backend = 1722
-max_intra_tier_duplicate_lines_frontend = 1229
+max_intra_tier_duplicate_lines_frontend = 1235

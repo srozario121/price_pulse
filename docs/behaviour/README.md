@@ -64,10 +64,10 @@ tests, docs, and discussions can reference behaviour unambiguously.
 | `scraping.feature` | PP-E2E-010…013 | pytest-bdd | `backend/tests/e2e/steps/test_behaviour.py` |
 | `alerts.feature` | PP-E2E-020…022 | pytest-bdd | `backend/tests/e2e/steps/test_behaviour.py` |
 | `notification_channels.feature` | PP-E2E-030…034 | pytest-bdd | `backend/tests/e2e/steps/test_behaviour.py` |
-| `ui_journeys.feature` | PP-E2E-040…042 | playwright-bdd | `frontend/tests/e2e/steps/ui_journeys.steps.ts` |
+| `ui_journeys.feature` | PP-E2E-040…042, 046 | playwright-bdd | `frontend/tests/e2e/steps/ui_journeys.steps.ts` |
 | `selector_healing.feature` | PP-E2E-043…045 | pytest-bdd | `backend/tests/e2e/steps/test_selector_healing.py` |
 
-`@smoke` scenarios: `PP-E2E-001`, `PP-E2E-010`, `PP-E2E-013`, `PP-E2E-020`, `PP-E2E-040`.
+`@smoke` scenarios: `PP-E2E-001`, `PP-E2E-010`, `PP-E2E-013`, `PP-E2E-020`, `PP-E2E-040`, `PP-E2E-046`.
 
 `@live-llm` scenarios: `PP-E2E-043`…`PP-E2E-045` (opt-in only — see above).
 
