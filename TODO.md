@@ -926,6 +926,232 @@ Arrange-Assert-Act for all backend tests.
 
 ---
 
+## 19. Crawl Metadata — Surface How Each Scrape Actually Ran
+
+Every scrape already *makes* a series of consequential decisions — which proxy it
+egressed through, which User-Agent it presented, whether the page was classified
+as blocked, which selector finally produced the price (`ld+json`, the product's
+own CSS selector, the LLM-healed one, or the legacy hardcoded list), how long the
+fetch took, how large the page was — and then throws almost all of it away. What
+survives is `PriceRecord.extraction_status` plus the `ScrapeJob` lifecycle row
+(Item 17): status, queue, trigger, retries, timings, and a free-text `detail`.
+
+That is enough to know a scrape failed and not much else. Diagnosing *why* a
+source is failing currently means reading worker logs, which are ephemeral, not
+queryable, and gone after a container restart. Concretely, three questions the
+platform cannot answer today:
+
+- "Is this host failing because of one bad proxy, or all of them?"
+- "Did the LLM-healed selector actually get used, or did the legacy list win?"
+- "Is this source getting slower, or is it just noisy?"
+
+**Motivation**: Items 15, 16 and 18 each added machinery whose behaviour is
+invisible in the product. This item makes the existing signals observable rather
+than adding new ones — the cheapest possible way to make three prior items
+debuggable.
+
+**Depends on**: Item 17 (`ScrapeJob` table + signal-driven lifecycle) — the
+natural home for per-attempt metadata. Interplays with Item 15 (proxy/UA/block
+classification) and Item 16 (which selector won).
+
+### Implementation workflow (mandatory — complete in order)
+
+1. [ ] Create an isolated git worktree before writing any code:
+       `git worktree add ../pp-item-19 -b feat/item-19`
+2. [ ] Implement every task below inside that worktree — never directly on `main`.
+3. [ ] All quality gates must pass before opening a PR:
+       `make test` exits 0 and `make quality` exits 0
+       (see `CONTRIBUTING.md` → Pull Request Checklist).
+4. [ ] Raise a Pull Request: `gh pr create`
+       **No direct commits to the default branch (`main`) are permitted.**
+
+### Candidate metadata (to be narrowed during plan-review)
+
+Grouped by where it is already available at scrape time:
+
+- **Fetch**: final HTTP status, redirect chain, response bytes, fetch duration,
+  whether a proxy was used and *which* (identifier, never credentials), the
+  User-Agent presented, proxy rotations consumed.
+- **Extraction**: which strategy produced the price (`ld_json` / `product_css` /
+  `learned_selector` / `legacy_dom_list`), the selector string itself, and — when
+  a learned selector was used — its `SelectorProfile` version.
+- **Anti-blocking**: the `classify_block` verdict and the marker that triggered it.
+- **Page**: title presence, HTML byte size, whether the page differed from the
+  previous scrape (the `raw_html_hash` already tells us this but it is not surfaced).
+
+### Open questions for plan-review
+
+- **Where does it live?** Extra columns on `ScrapeJob`, a JSONB `metadata` column,
+  or a separate `scrape_attempt` table (one row per attempt, since a single job may
+  rotate proxies several times)? Columns are queryable and cheap to index; JSONB is
+  flexible but becomes untyped sprawl. The proxy-rotation case argues for a
+  per-attempt child table, which is the most invasive option.
+- **Retention.** `prune_scrape_jobs` bounds `ScrapeJob` at `SCRAPE_JOB_RETENTION_DAYS`;
+  richer per-attempt rows will grow faster. Same retention, or shorter?
+- **Secret hygiene.** A proxy URL contains credentials. Store a stable *identifier*
+  (index or host) rather than the URL — decide the scheme before any of it is written.
+- **How much is surfaced in the UI** versus available only via the API? The Jobs
+  view (Item 17) is the obvious home, but a per-scrape detail drawer is new UI.
+- **Does this need a new endpoint**, or does it extend `GET /scrape-jobs`?
+
+### Documentation
+- **`backend/app/models/scrape_job.py`** (+ Alembic migration) — update/extend
+- **`backend/app/api/v1/scrape_jobs.py`, `schemas/scrape_job.py`** — expose it
+- **`frontend/src/pages/Jobs.tsx`** — surface it
+- **`CLAUDE.md`** — document the new fields and their provenance
+- **`CHANGELOG.md`** — `### Added` entry at implementation time
+
+---
+
+## 20. In-App Assistant — Drive the UI and Fill Forms Conversationally
+
+Add a chatbot to the SPA that can both *answer* questions about the tracked data
+and *act* on the user's behalf: add a product from a pasted URL, set an alert
+threshold, trigger a scrape, explain why a source is failing, and pre-fill the
+forms on whichever page the user is on.
+
+**Motivation**: the current UI is form-driven and assumes the user knows the
+vocabulary — `source_type`, `css_selector`, alert direction, threshold. Pasting a
+retailer URL and saying "watch this and tell me if it drops below £100" is a far
+lower-friction path to the same three API calls, and the platform already exposes
+every one of them as a typed REST endpoint.
+
+**Reuses Item 16's LLM infrastructure directly**: `services/llm/client.py` already
+resolves a credential (per-product BYO → env admin default → disabled) and builds
+a Pydantic AI model for OpenAI / Anthropic / Azure / OpenRouter through one code
+path. The assistant should use that same resolution rather than introducing a
+second, parallel LLM configuration — but note the current scoping is *per product*,
+which does not fit a chat session that spans products (see open questions).
+
+### Implementation workflow (mandatory — complete in order)
+
+1. [ ] Create an isolated git worktree before writing any code:
+       `git worktree add ../pp-item-20 -b feat/item-20`
+2. [ ] Implement every task below inside that worktree — never directly on `main`.
+3. [ ] All quality gates must pass before opening a PR:
+       `make test` exits 0 and `make quality` exits 0
+       (see `CONTRIBUTING.md` → Pull Request Checklist).
+4. [ ] Raise a Pull Request: `gh pr create`
+       **No direct commits to the default branch (`main`) are permitted.**
+
+### Indicative capabilities
+
+- **Read**: "which products are failing?", "what's the cheapest this has been?",
+  "why did the last scrape fail?" — backed by `/products/failing`, `/prices`,
+  `/scrape-jobs`.
+- **Act**: add a product (inferring `source_type` from the URL against the
+  `SourcePreset` host patterns), create/update an alert, trigger a scrape, report
+  a selector issue.
+- **Fill**: with a form open, populate its fields from a natural-language
+  description instead of submitting directly — the user still presses the button.
+
+### Open questions for plan-review
+
+- **Where does the agent run?** A backend endpoint (`POST /api/v1/assistant`) that
+  owns the tool-calling loop, or client-side against the provider? Backend keeps
+  the key server-side and reuses Item 16's resolution — almost certainly right, but
+  it means streaming responses through FastAPI.
+- **Credential scoping.** Item 16's credentials are per *product*. A chat session
+  is not scoped to a product. Does this need a deployment-level assistant key, or a
+  new scope? This is the first real pressure on the "no auth system yet" decision.
+- **How are actions authorised?** With no user system, an assistant that can
+  `DELETE /products/{id}` is a destructive capability behind a text box. Minimum
+  bar: mutating tools require explicit UI confirmation, and destructive ones are
+  excluded from the toolset entirely until auth exists.
+- **Prompt injection.** The assistant will read scraped page content and product
+  names — attacker-controlled text from retail sites. A tool-calling agent that
+  ingests that is injectable by construction. Decide what the assistant may read
+  and whether scraped HTML is ever admitted into its context.
+- **Cost control.** Chat is unbounded, unlike Item 16's once-per-host generation.
+  Needs a per-session token/turn budget and a kill switch.
+- **Does it stream?** Non-streaming is far simpler; the UX cost may be acceptable.
+- **Fallback** when no credential resolves — the assistant should degrade to
+  absent, exactly as selector generation does, never to a broken widget.
+
+### Documentation
+- **`backend/app/api/v1/assistant.py`** — create: the tool-calling endpoint
+- **`backend/app/services/llm/`** — extend: shared agent/credential resolution
+- **`frontend/src/components/Assistant*.tsx`** — create: the chat surface
+- **`docs/decisions/`** — ADR: agent location, authorisation model, injection stance
+- **`CLAUDE.md` / `CHANGELOG.md`** — update at implementation time
+
+---
+
+## 21. Cross-Source Product Matching — Compare the Same Item Across Retailers
+
+Today a tracked product is one URL on one retailer, and its price history is a
+single series. The question a shopper actually has is comparative: *is £129 good?*
+Answering that means finding the same or an equivalent item on other sources and
+tracking how the spread between them moves over time.
+
+**Motivation**: Item 18 made onboarding a retailer a data change, so the platform
+can already scrape eBay, Currys, John Lewis, Amazon and Facebook Marketplace. What
+it cannot do is relate them — five prices for the same headphones are five
+unrelated products. The comparison is the value; the scraping is just plumbing.
+
+Worked example: the tracked *Sony wireless clip headphones* on `amazon.co.uk` at
+£129 should surface the equivalent listing on `currys.co.uk` and `johnlewis.com`,
+and chart all of them on one axis so a divergence — or a genuine bargain — is
+visible.
+
+**Depends on**: Item 18 (multi-source scraping). Interplays with Item 16 (the same
+LLM path is the obvious candidate for equivalence judgement).
+
+### Implementation workflow (mandatory — complete in order)
+
+1. [ ] Create an isolated git worktree before writing any code:
+       `git worktree add ../pp-item-21 -b feat/item-21`
+2. [ ] Implement every task below inside that worktree — never directly on `main`.
+3. [ ] All quality gates must pass before opening a PR:
+       `make test` exits 0 and `make quality` exits 0
+       (see `CONTRIBUTING.md` → Pull Request Checklist).
+4. [ ] Raise a Pull Request: `gh pr create`
+       **No direct commits to the default branch (`main`) are permitted.**
+
+### Shape of the work
+
+- A **product-group** concept: several `Product` rows (one per source) belonging to
+  one logical item, each keeping its own independent price series.
+- **Discovery**: given a tracked product, find candidate listings on other enabled
+  sources.
+- **Equivalence judgement**: decide whether a candidate is the *same* item, an
+  acceptable variant (different colour), or a different product entirely.
+- **Comparative surfaces**: a multi-series chart, a current best-price summary, and
+  a spread-over-time view.
+
+### Open questions for plan-review
+
+- **How are candidates discovered?** Structured identifiers (EAN/GTIN/MPN, sometimes
+  in `ld+json`) are precise but frequently absent. Retailer site-search scraping is
+  broad but is a new scraping surface per retailer with its own blocking profile. A
+  third-party product API is the most reliable and the only one with a licence cost.
+  These are materially different projects — this is *the* decision to settle first.
+- **Who judges equivalence, and how is a wrong match caught?** An LLM comparing two
+  titles will confidently match a 2023 model to a 2024 one, or a refurbished unit to
+  new. A false match silently corrupts the comparison — the user sees a "bargain"
+  that is a different product. Needs a confidence threshold, a visible provenance
+  ("matched automatically"), and a way to reject a match. Consider requiring
+  confirmation before a match affects any displayed comparison.
+- **Manual linking as the floor.** Letting a user paste the equivalent URLs
+  themselves delivers most of the comparison value with none of the matching risk,
+  and is a plausible first slice with automated discovery layered on later.
+- **Cost and load.** Each group multiplies scrape volume by the number of sources,
+  against the per-domain rate limits and the anti-blocking budget from Item 15.
+- **Variant modelling.** Colour/size/capacity variants: same group or distinct?
+  This decision propagates into the schema and is expensive to change later.
+- **Currency and availability.** Comparing across sources requires normalising
+  currency, and an out-of-stock listing at £99 is not a better price.
+
+### Documentation
+- **`backend/app/models/`** (+ Alembic migration) — the group/link model
+- **`backend/app/services/`** — discovery + equivalence services
+- **`backend/app/api/v1/`** — group CRUD, comparative price endpoint
+- **`frontend/src/`** — multi-series chart + comparison view
+- **`docs/decisions/`** — ADR: discovery strategy, equivalence + false-match handling
+- **`CLAUDE.md` / `CHANGELOG.md`** — update at implementation time
+
+---
+
 ## References
 
 - FastAPI docs: https://fastapi.tiangolo.com/
